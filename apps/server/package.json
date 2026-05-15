@@ -1,0 +1,35 @@
+{
+	"name": "server",
+	"type": "module",
+	"main": "src/index.ts",
+	"scripts": {
+		"build": "bun --bun tsdown",
+		"check-types": "tsc -b",
+		"compile": "bun build --compile --minify --sourcemap --bytecode ./src/index.ts --outfile server",
+		"dev": "bun run --hot src/index.ts",
+		"start": "bun run dist/index.mjs",
+		"test": "bun --bun vitest run --passWithNoTests"
+	},
+	"dependencies": {
+		"@elysiajs/cors": "^1.4.1",
+		"@elysiajs/trpc": "^1.1.0",
+		"@hono/trpc-server": "^0.4.0",
+		"@my-better-t-app/api": "workspace:*",
+		"@my-better-t-app/auth": "workspace:*",
+		"@my-better-t-app/db": "workspace:*",
+		"@my-better-t-app/env": "workspace:*",
+		"@sinclair/typebox": "^0.34.49",
+		"@trpc/server": "catalog:",
+		"better-auth": "catalog:",
+		"dotenv": "catalog:",
+		"elysia": "catalog:",
+		"zod": "catalog:"
+	},
+	"devDependencies": {
+		"@my-better-t-app/config": "workspace:*",
+		"@types/bun": "catalog:",
+		"tsdown": "^0.21.9",
+		"typescript": "catalog:",
+		"vitest": "^4.0.15"
+	}
+}

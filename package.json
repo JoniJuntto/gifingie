@@ -1,0 +1,51 @@
+{
+	"name": "my-better-t-app",
+	"private": true,
+	"workspaces": {
+		"packages": [
+			"apps/*",
+			"packages/*"
+		],
+		"catalog": {
+			"dotenv": "^17.2.2",
+			"zod": "^4.1.13",
+			"typescript": "^6",
+			"@types/bun": "^1.3.4",
+			"elysia": "^1.4.28",
+			"@trpc/server": "^11.16.0",
+			"better-auth": "1.6.9",
+			"next-themes": "^0.4.6",
+			"@trpc/client": "^11.16.0",
+			"@types/react-dom": "^19.2.3"
+		}
+	},
+	"type": "module",
+	"scripts": {
+		"dev": "turbo dev",
+		"build": "turbo run build",
+		"check-types": "turbo run check-types",
+		"test": "turbo run test",
+		"dev:web": "turbo run -F web dev",
+		"dev:server": "turbo run -F server dev",
+		"db:push": "turbo run -F @my-better-t-app/db db:push",
+		"db:studio": "turbo run -F @my-better-t-app/db db:studio",
+		"db:generate": "turbo run -F @my-better-t-app/db db:generate",
+		"db:migrate": "turbo run -F @my-better-t-app/db db:migrate",
+		"check": "biome check --write ."
+	},
+	"dependencies": {
+		"@my-better-t-app/env": "workspace:*",
+		"dotenv": "catalog:",
+		"zod": "catalog:"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^2.2.0",
+		"@my-better-t-app/config": "workspace:*",
+		"@types/bun": "catalog:",
+		"lefthook": "^2.0.13",
+		"turbo": "^2.8.12",
+		"typescript": "catalog:",
+		"vitest": "^4.0.15"
+	},
+	"packageManager": "bun@1.3.14"
+}
