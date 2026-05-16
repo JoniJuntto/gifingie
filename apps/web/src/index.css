@@ -1,1 +1,284 @@
 @import "@my-better-t-app/ui/globals.css";
+
+/* ── gifingie design system ─────────────────────────────────────────────────
+   Tokens use --gf- prefix to avoid colliding with shadcn / Tailwind vars.
+   Light theme is the default; .dark (from ThemeProvider) flips to dark mode.
+   ─────────────────────────────────────────────────────────────────────────── */
+
+:root {
+  --gf-accent:     #ff6b35;
+  --gf-accent-soft: rgba(255, 107, 53, 0.10);
+  --gf-live:       #ef4444;
+  --gf-ok:         #16a34a;
+  --gf-font-ui:    'Geist', -apple-system, 'SF Pro Display', BlinkMacSystemFont, system-ui, sans-serif;
+  --gf-font-mono:  'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  /* light */
+  --gf-bg:         #f5f3ee;
+  --gf-bg-2:       #efece4;
+  --gf-surface:    #ffffff;
+  --gf-hl:         rgba(20, 17, 13, 0.10);
+  --gf-hl2:        rgba(20, 17, 13, 0.18);
+  --gf-text:       #14110d;
+  --gf-text-2:     #2a2620;
+  --gf-muted:      #7a756c;
+  --gf-muted-2:    #b3ada3;
+  --gf-on-accent:  #ffffff;
+  --gf-on-inv:     #ffffff;
+  --gf-inv:        #14110d;
+  --gf-t1:         rgba(20,17,13,0.04);
+  --gf-t2:         rgba(20,17,13,0.08);
+}
+
+.dark {
+  --gf-bg:         #000000;
+  --gf-bg-2:       #0a0a0c;
+  --gf-surface:    #0e0e10;
+  --gf-hl:         rgba(255,255,255,0.10);
+  --gf-hl2:        rgba(255,255,255,0.18);
+  --gf-text:       #ffffff;
+  --gf-text-2:     #e7e5e8;
+  --gf-muted:      #8a8794;
+  --gf-muted-2:    #4f4d57;
+  --gf-on-accent:  #1a0d05;
+  --gf-on-inv:     #14110d;
+  --gf-inv:        #ffffff;
+  --gf-t1:         rgba(255,255,255,0.05);
+  --gf-t2:         rgba(255,255,255,0.10);
+}
+
+/* ── Page shell ─────────────────────────────────────────────────────────── */
+.gf-page {
+  font-family: var(--gf-font-ui);
+  background: var(--gf-bg);
+  color: var(--gf-text);
+  letter-spacing: -0.01em;
+  -webkit-font-smoothing: antialiased;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Nav ─────────────────────────────────────────────────────────────────── */
+.gf-nav {
+  height: 64px;
+  flex: 0 0 64px;
+  display: flex;
+  align-items: center;
+  padding: 0 40px;
+  gap: 32px;
+  border-bottom: 1px solid var(--gf-hl);
+  font-family: var(--gf-font-ui);
+}
+.gf-nav-link {
+  font-size: 14px;
+  color: var(--gf-muted);
+  cursor: pointer;
+  font-weight: 500;
+  transition: color 0.12s;
+  letter-spacing: -0.01em;
+  text-decoration: none;
+}
+.gf-nav-link:hover { color: var(--gf-text-2); }
+.gf-nav-link.active { color: var(--gf-text); }
+
+/* ── Logo mark ───────────────────────────────────────────────────────────── */
+.gf-mark {
+  width: 22px; height: 22px;
+  border-radius: 4px;
+  background: var(--gf-inv);
+  color: var(--gf-on-inv);
+  display: inline-flex; align-items: center; justify-content: center;
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: -0.06em;
+  font-family: var(--gf-font-ui);
+  flex: 0 0 auto;
+  user-select: none;
+}
+
+/* ── Buttons ─────────────────────────────────────────────────────────────── */
+.gf-btn {
+  height: 40px;
+  padding: 0 18px;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--gf-text);
+  font-family: var(--gf-font-ui);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+  transition: background 0.12s, color 0.12s, border-color 0.12s, filter 0.12s;
+  letter-spacing: -0.01em;
+}
+.gf-btn:hover { background: var(--gf-t1); }
+.gf-btn.primary {
+  background: var(--gf-inv);
+  color: var(--gf-on-inv);
+}
+.gf-btn.primary:hover { filter: brightness(0.90); background: var(--gf-inv); }
+.gf-btn.accent {
+  background: var(--gf-accent);
+  color: var(--gf-on-accent);
+}
+.gf-btn.accent:hover { filter: brightness(0.95); }
+.gf-btn.outline { border-color: var(--gf-hl2); }
+.gf-btn.outline:hover { border-color: var(--gf-text); background: transparent; }
+.gf-btn.ghost { color: var(--gf-muted); padding: 0; height: auto; }
+.gf-btn.ghost:hover { color: var(--gf-text); background: transparent; }
+.gf-btn.link {
+  color: var(--gf-text);
+  padding: 0;
+  height: auto;
+  background: transparent;
+  border-bottom: 1px solid currentColor;
+  border-radius: 0;
+}
+.gf-btn.link:hover { background: transparent; color: var(--gf-accent); }
+.gf-btn.danger { color: var(--gf-live); background: transparent; padding: 0; height: auto; }
+.gf-btn.danger:hover { background: rgba(239,68,68,0.06); }
+.gf-btn.sm { height: 32px; padding: 0 13px; font-size: 13px; }
+.gf-btn.lg { height: 52px; padding: 0 24px; font-size: 15px; }
+.gf-btn.block { width: 100%; justify-content: center; }
+.gf-btn:disabled { opacity: 0.45; pointer-events: none; }
+
+/* ── Inputs ──────────────────────────────────────────────────────────────── */
+.gf-input {
+  height: 52px;
+  border: 0;
+  border-bottom: 1px solid var(--gf-hl2);
+  background: transparent;
+  color: var(--gf-text);
+  border-radius: 0;
+  padding: 0;
+  font-family: var(--gf-font-ui);
+  font-size: 16px;
+  width: 100%;
+  box-sizing: border-box;
+  outline: none;
+  letter-spacing: -0.02em;
+}
+.gf-input:focus { border-color: var(--gf-text); }
+.gf-input::placeholder { color: var(--gf-muted-2); }
+.gf-input.boxed {
+  border: 1px solid var(--gf-hl2);
+  border-radius: 4px;
+  padding: 0 16px;
+  height: 44px;
+}
+
+/* ── Eyebrow ─────────────────────────────────────────────────────────────── */
+.gf-eyebrow {
+  font-family: var(--gf-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--gf-muted);
+  font-weight: 500;
+}
+
+/* ── Display heading ─────────────────────────────────────────────────────── */
+.gf-display {
+  font-family: var(--gf-font-ui);
+  font-weight: 300;
+  letter-spacing: -0.04em;
+  line-height: 1.02;
+  margin: 0;
+}
+
+/* ── Status dot ──────────────────────────────────────────────────────────── */
+.gf-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  display: inline-block;
+  flex: 0 0 auto;
+}
+.gf-dot.live  { background: var(--gf-live); box-shadow: 0 0 0 3px rgba(239,68,68,0.15); }
+.gf-dot.ok    { background: var(--gf-ok);   box-shadow: 0 0 0 3px rgba(22,163,74,0.15); }
+.gf-dot.queue { background: var(--gf-accent); }
+
+/* ── Hairline divider ────────────────────────────────────────────────────── */
+.gf-hr { height: 1px; background: var(--gf-hl); border: 0; margin: 0; width: 100%; }
+
+/* ── Mono code block ─────────────────────────────────────────────────────── */
+.gf-code {
+  font-family: var(--gf-font-mono);
+  font-size: 14px;
+  background: transparent;
+  border-top: 1px solid var(--gf-hl);
+  border-bottom: 1px solid var(--gf-hl);
+  padding: 16px 0;
+  color: var(--gf-text);
+  word-break: break-all;
+  user-select: all;
+  letter-spacing: -0.02em;
+}
+
+/* ── Avatar ──────────────────────────────────────────────────────────────── */
+.gf-avatar {
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: 600;
+  flex: 0 0 auto;
+  letter-spacing: -0.02em;
+  font-size: 11px;
+  font-family: var(--gf-font-ui);
+}
+
+/* ── Setting rows ────────────────────────────────────────────────────────── */
+.gf-setting-row {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  gap: 36px;
+  padding: 28px 0;
+  border-bottom: 1px solid var(--gf-hl);
+}
+
+/* ── Seg toggle ──────────────────────────────────────────────────────────── */
+.gf-seg {
+  display: inline-flex;
+  border: 1px solid var(--gf-hl2);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.gf-seg-opt {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  font-family: var(--gf-font-ui);
+  cursor: pointer;
+  letter-spacing: -0.01em;
+  border-right: 1px solid var(--gf-hl2);
+  transition: background 0.12s, color 0.12s;
+}
+.gf-seg-opt:last-child { border-right: 0; }
+.gf-seg-opt.active {
+  background: var(--gf-inv);
+  color: var(--gf-on-inv);
+}
+.gf-seg-opt:not(.active) {
+  background: transparent;
+  color: var(--gf-muted);
+}
+
+/* ── Submission list row ─────────────────────────────────────────────────── */
+.gf-sub-row {
+  display: grid;
+  grid-template-columns: 52px 1fr auto 90px;
+  gap: 14px;
+  align-items: center;
+  padding: 13px 0;
+  border-bottom: 1px solid var(--gf-hl);
+}
+.gf-sub-row:last-child { border-bottom: 0; }

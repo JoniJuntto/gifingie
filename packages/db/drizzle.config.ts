@@ -3,7 +3,7 @@ import { env } from '@my-better-t-app/env/server';
 
 export default defineConfig({
   out: './src/migrations',
-  schema: ['./src/schema.ts'],
+  schema: ['./src/schema/*.ts'],
   dialect: 'postgresql',
   dbCredentials: {
     host: env.DATABASE_HOST,

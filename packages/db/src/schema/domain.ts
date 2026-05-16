@@ -3,6 +3,7 @@ import {
 	bigserial,
 	boolean,
 	index,
+	integer,
 	pgEnum,
 	pgTable,
 	text,
@@ -14,6 +15,15 @@ import {
 import { user } from "./auth";
 
 export const selectedRoleEnum = pgEnum("selected_role", ["streamer", "viewer"]);
+export const submissionSourceEnum = pgEnum("submission_source", [
+	"giphy",
+	"upload",
+]);
+export const moderationStatusEnum = pgEnum("moderation_status", [
+	"pending",
+	"approved",
+	"rejected",
+]);
 
 export const userPreferences = pgTable("user_preferences", {
 	userId: text("user_id")
@@ -40,8 +50,15 @@ export const streamerProfiles = pgTable(
 		twitchAvatarUrl: text("twitch_avatar_url"),
 		isEnrolled: boolean("is_enrolled").default(true).notNull(),
 		overlayToken: text("overlay_token").notNull(),
+		gifDisplaySeconds: integer("gif_display_seconds").default(10).notNull(),
+		shareVisitCount: integer("share_visit_count").default(0).notNull(),
+		moderateGiphySubmissions: boolean("moderate_giphy_submissions")
+			.default(false)
+			.notNull(),
 		liveCheckedAt: timestamp("live_checked_at"),
 		isLive: boolean("is_live").default(false).notNull(),
+		liveStreamTitle: text("live_stream_title"),
+		liveStreamThumbnailUrl: text("live_stream_thumbnail_url"),
 		createdAt: timestamp("created_at").defaultNow().notNull(),
 		updatedAt: timestamp("updated_at")
 			.defaultNow()
@@ -65,10 +82,20 @@ export const gifSubmissions = pgTable(
 		viewerUserId: text("viewer_user_id")
 			.notNull()
 			.references(() => user.id, { onDelete: "cascade" }),
-		giphyId: text("giphy_id").notNull(),
-		gifUrl: text("gif_url").notNull(),
+		source: submissionSourceEnum("source").default("giphy").notNull(),
+		moderationStatus: moderationStatusEnum("moderation_status")
+			.default("approved")
+			.notNull(),
+		giphyId: text("giphy_id"),
+		gifUrl: text("gif_url"),
 		previewUrl: text("preview_url"),
 		title: text("title").notNull(),
+		caption: text("caption"),
+		s3Key: text("s3_key"),
+		contentType: text("content_type"),
+		byteSize: integer("byte_size"),
+		originalFilename: text("original_filename"),
+		uploadedAt: timestamp("uploaded_at"),
 		displayedAt: timestamp("displayed_at"),
 		createdAt: timestamp("created_at").defaultNow().notNull(),
 	},
@@ -90,6 +117,11 @@ export const gifSubmissions = pgTable(
 		index("gif_submissions_displayed_idx").on(
 			table.streamerProfileId,
 			table.displayedAt,
+		),
+		index("gif_submissions_moderation_idx").on(
+			table.streamerProfileId,
+			table.moderationStatus,
+			table.uploadedAt,
 		),
 	],
 );

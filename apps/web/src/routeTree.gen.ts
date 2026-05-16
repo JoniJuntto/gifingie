@@ -16,6 +16,7 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as ChooseRoleRouteImport } from './routes/choose-role'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as SLoginRouteImport } from './routes/s/$login'
 import { Route as OverlayOverlayTokenRouteImport } from './routes/overlay/$overlayToken'
 
 const ViewerRoute = ViewerRouteImport.update({
@@ -53,6 +54,11 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SLoginRoute = SLoginRouteImport.update({
+  id: '/s/$login',
+  path: '/s/$login',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const OverlayOverlayTokenRoute = OverlayOverlayTokenRouteImport.update({
   id: '/overlay/$overlayToken',
   path: '/overlay/$overlayToken',
@@ -68,6 +74,7 @@ export interface FileRoutesByFullPath {
   '/streamer': typeof StreamerRoute
   '/viewer': typeof ViewerRoute
   '/overlay/$overlayToken': typeof OverlayOverlayTokenRoute
+  '/s/$login': typeof SLoginRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -78,6 +85,7 @@ export interface FileRoutesByTo {
   '/streamer': typeof StreamerRoute
   '/viewer': typeof ViewerRoute
   '/overlay/$overlayToken': typeof OverlayOverlayTokenRoute
+  '/s/$login': typeof SLoginRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -89,6 +97,7 @@ export interface FileRoutesById {
   '/streamer': typeof StreamerRoute
   '/viewer': typeof ViewerRoute
   '/overlay/$overlayToken': typeof OverlayOverlayTokenRoute
+  '/s/$login': typeof SLoginRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -101,6 +110,7 @@ export interface FileRouteTypes {
     | '/streamer'
     | '/viewer'
     | '/overlay/$overlayToken'
+    | '/s/$login'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -111,6 +121,7 @@ export interface FileRouteTypes {
     | '/streamer'
     | '/viewer'
     | '/overlay/$overlayToken'
+    | '/s/$login'
   id:
     | '__root__'
     | '/'
@@ -121,6 +132,7 @@ export interface FileRouteTypes {
     | '/streamer'
     | '/viewer'
     | '/overlay/$overlayToken'
+    | '/s/$login'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -132,6 +144,7 @@ export interface RootRouteChildren {
   StreamerRoute: typeof StreamerRoute
   ViewerRoute: typeof ViewerRoute
   OverlayOverlayTokenRoute: typeof OverlayOverlayTokenRoute
+  SLoginRoute: typeof SLoginRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -185,6 +198,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/s/$login': {
+      id: '/s/$login'
+      path: '/s/$login'
+      fullPath: '/s/$login'
+      preLoaderRoute: typeof SLoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/overlay/$overlayToken': {
       id: '/overlay/$overlayToken'
       path: '/overlay/$overlayToken'
@@ -204,6 +224,7 @@ const rootRouteChildren: RootRouteChildren = {
   StreamerRoute: StreamerRoute,
   ViewerRoute: ViewerRoute,
   OverlayOverlayTokenRoute: OverlayOverlayTokenRoute,
+  SLoginRoute: SLoginRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

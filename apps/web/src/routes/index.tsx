@@ -1,13 +1,6 @@
-import { Button } from "@my-better-t-app/ui/components/button";
-import {
-	Card,
-	CardContent,
-	CardDescription,
-	CardHeader,
-	CardTitle,
-} from "@my-better-t-app/ui/components/card";
 import { useQuery } from "@tanstack/react-query";
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { ArrowRightIcon, EyeIcon, MonitorIcon } from "lucide-react";
 import { useEffect } from "react";
 
 import { authClient } from "@/lib/auth-client";
@@ -26,10 +19,7 @@ function HomeComponent() {
 	});
 
 	useEffect(() => {
-		if (!session || !me.data) {
-			return;
-		}
-
+		if (!session || !me.data) return;
 		navigate({
 			to:
 				me.data.selectedRole === "streamer"
@@ -43,43 +33,79 @@ function HomeComponent() {
 
 	if (isPending || me.isLoading) {
 		return (
-			<main className="p-6 text-muted-foreground text-sm">Loading...</main>
+			<div
+				className="gf-page"
+				style={{
+					display: "flex",
+					alignItems: "center",
+					justifyContent: "center",
+				}}
+			>
+				<span
+					style={{
+						fontFamily: "var(--gf-font-mono)",
+						fontSize: 13,
+						color: "var(--gf-muted)",
+						letterSpacing: "0.04em",
+					}}
+				>
+					Loading…
+				</span>
+			</div>
 		);
 	}
 
 	return (
-		<main className="mx-auto grid w-full max-w-4xl gap-4 px-4 py-8 md:grid-cols-[1fr_1fr]">
-			<Card>
-				<CardHeader>
-					<CardTitle>Send GIFs to live overlays</CardTitle>
-					<CardDescription>
-						Choose a live enrolled Twitch streamer, search GIPHY, and send one
-						GIF at a time.
-					</CardDescription>
-				</CardHeader>
-				<CardContent>
-					<Button render={<Link to={session ? "/viewer" : "/login"} />}>
-						Open viewer flow
-					</Button>
-				</CardContent>
-			</Card>
-			<Card>
-				<CardHeader>
-					<CardTitle>Run an OBS browser source</CardTitle>
-					<CardDescription>
-						Enroll your Twitch channel and get a private overlay URL for
-						submitted GIFs.
-					</CardDescription>
-				</CardHeader>
-				<CardContent>
-					<Button
-						variant="outline"
-						render={<Link to={session ? "/streamer" : "/login"} />}
+		<div
+			className="gf-page"
+			style={{
+				display: "flex",
+				alignItems: "center",
+				justifyContent: "center",
+			}}
+		>
+			<div style={{ maxWidth: 540 }}>
+				<h1
+					className="gf-display"
+					style={{ fontSize: 64, color: "var(--gf-text)", marginBottom: 20 }}
+				>
+					Send a GIF.
+					<br />
+					<span style={{ color: "var(--gf-accent)" }}>Land it on stream.</span>
+				</h1>
+				<p
+					style={{
+						fontSize: 16,
+						color: "var(--gf-muted)",
+						lineHeight: 1.55,
+						marginBottom: 40,
+						fontFamily: "var(--gf-font-ui)",
+					}}
+				>
+					Sign in with Twitch to send GIFs to enrolled streamers, or enroll
+					your own channel and add a browser source to OBS.
+				</p>
+
+				<div style={{ display: "flex", gap: 16 }}>
+					<button
+						type="button"
+						className="gf-btn primary lg"
+						onClick={() => navigate({ to: "/login" })}
 					>
-						Open streamer dashboard
-					</Button>
-				</CardContent>
-			</Card>
-		</main>
+						<EyeIcon size={15} />
+						Get started
+						<ArrowRightIcon size={15} />
+					</button>
+					<button
+						type="button"
+						className="gf-btn outline lg"
+						onClick={() => navigate({ to: "/login" })}
+					>
+						<MonitorIcon size={15} />
+						Enroll as streamer
+					</button>
+				</div>
+			</div>
+		</div>
 	);
 }

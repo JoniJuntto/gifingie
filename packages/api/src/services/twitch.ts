@@ -1,6 +1,8 @@
 import { env } from "@my-better-t-app/env/server";
 import { HelixClient, TwitchAuth } from "velho";
 
+import { buildTwitchThumbnailUrl } from "./twitch-thumbnail";
+
 type TwitchUser = {
 	id: string;
 	login: string;
@@ -12,6 +14,8 @@ type TwitchStream = {
 	userId: string;
 	userLogin: string;
 	userName: string;
+	title: string;
+	thumbnailUrl: string | null;
 };
 
 const auth = new TwitchAuth({
@@ -64,6 +68,8 @@ export async function getLiveStreamsByUserIds(ids: string[]) {
 			user_id: string;
 			user_login: string;
 			user_name: string;
+			title: string;
+			thumbnail_url?: string;
 		}[];
 	}>("/streams", {
 		query: { user_id: ids },
@@ -73,6 +79,10 @@ export async function getLiveStreamsByUserIds(ids: string[]) {
 		userId: stream.user_id,
 		userLogin: stream.user_login,
 		userName: stream.user_name,
+		title: stream.title,
+		thumbnailUrl: stream.thumbnail_url
+			? buildTwitchThumbnailUrl(stream.thumbnail_url, 640, 360)
+			: null,
 	}));
 }
 

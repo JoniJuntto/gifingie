@@ -1,6 +1,5 @@
 import { Toaster } from "@my-better-t-app/ui/components/sonner";
 import type { QueryClient } from "@tanstack/react-query";
-import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import {
 	createRootRouteWithContext,
 	HeadContent,
@@ -24,18 +23,23 @@ export const Route = createRootRouteWithContext<RouterAppContext>()({
 	component: RootComponent,
 	head: () => ({
 		meta: [
-			{
-				title: "my-better-t-app",
-			},
+			{ title: "gifingie" },
 			{
 				name: "description",
-				content: "my-better-t-app is a web application",
+				content: "Send GIFs to live streams.",
 			},
 		],
 		links: [
+			{ rel: "icon", href: "/favicon.ico" },
+			{ rel: "preconnect", href: "https://fonts.googleapis.com" },
 			{
-				rel: "icon",
-				href: "/favicon.ico",
+				rel: "preconnect",
+				href: "https://fonts.gstatic.com",
+				crossOrigin: "anonymous",
+			},
+			{
+				rel: "stylesheet",
+				href: "https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap",
 			},
 		],
 	}),
@@ -50,9 +54,9 @@ function RootComponent() {
 			<HeadContent />
 			<ThemeProvider
 				attribute="class"
-				defaultTheme="dark"
+				defaultTheme="light"
 				disableTransitionOnChange
-				storageKey="vite-ui-theme"
+				storageKey="gf-theme"
 			>
 				<div className="grid h-svh grid-rows-[auto_1fr]">
 					{isOverlay ? null : <Header />}
@@ -61,10 +65,7 @@ function RootComponent() {
 				<Toaster richColors />
 			</ThemeProvider>
 			{isOverlay ? null : (
-				<>
-					<TanStackRouterDevtools position="bottom-left" />
-					<ReactQueryDevtools position="bottom" buttonPosition="bottom-right" />
-				</>
+				<TanStackRouterDevtools position="bottom-left" />
 			)}
 		</>
 	);

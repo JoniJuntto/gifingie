@@ -4,3 +4,12 @@ export const OVERLAY_BACKLOG_LIMIT = 20;
 export const OVERLAY_INITIAL_WINDOW_MINUTES = 30;
 export const LIVE_CACHE_SECONDS = 75;
 export const OVERLAY_DISPLAY_SECONDS = 10;
+export const MIN_OVERLAY_DISPLAY_SECONDS = 1;
+export const MAX_OVERLAY_DISPLAY_SECONDS = 60;
+export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+export const ALLOWED_UPLOAD_CONTENT_TYPES = [
+	"image/jpeg",
+	"image/png",
+	"image/webp",
+	"image/gif",
+] as const;

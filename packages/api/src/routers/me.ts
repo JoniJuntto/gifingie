@@ -37,6 +37,9 @@ export const meRouter = router({
 						twitchDisplayName: streamerProfile.twitchDisplayName,
 						twitchAvatarUrl: streamerProfile.twitchAvatarUrl,
 						overlayToken: streamerProfile.overlayToken,
+						gifDisplaySeconds: streamerProfile.gifDisplaySeconds,
+						shareVisitCount: streamerProfile.shareVisitCount,
+						moderateGiphySubmissions: streamerProfile.moderateGiphySubmissions,
 					}
 				: null,
 		};

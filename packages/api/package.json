@@ -13,15 +13,17 @@
 		"test": "bun --bun vitest run"
 	},
 	"dependencies": {
+		"@aws-sdk/client-s3": "^3.1048.0",
+		"@aws-sdk/s3-request-presigner": "^3.1048.0",
 		"@my-better-t-app/auth": "workspace:*",
 		"@my-better-t-app/db": "workspace:*",
 		"@my-better-t-app/env": "workspace:*",
 		"@trpc/client": "catalog:",
 		"@trpc/server": "catalog:",
-		"drizzle-orm": "^0.45.1",
 		"dotenv": "catalog:",
-		"zod": "catalog:",
-		"velho": "^0.1.0"
+		"drizzle-orm": "^0.45.1",
+		"velho": "^0.1.0",
+		"zod": "catalog:"
 	},
 	"devDependencies": {
 		"@my-better-t-app/config": "workspace:*",

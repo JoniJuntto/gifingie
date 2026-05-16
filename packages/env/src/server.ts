@@ -15,6 +15,13 @@ export const env = createEnv({
 		TWITCH_CLIENT_ID: z.string().min(1),
 		TWITCH_CLIENT_SECRET: z.string().min(1),
 		GIPHY_API_KEY: z.string().min(1),
+		S3_ENDPOINT: z.url().optional(),
+		S3_REGION: z.string().min(1).optional(),
+		S3_BUCKET: z.string().min(1).optional(),
+		S3_ACCESS_KEY_ID: z.string().min(1).optional(),
+		S3_SECRET_ACCESS_KEY: z.string().min(1).optional(),
+		S3_UPLOAD_URL_TTL_SECONDS: z.coerce.number().int().positive().default(300),
+		S3_DISPLAY_URL_TTL_SECONDS: z.coerce.number().int().positive().default(300),
 		NODE_ENV: z
 			.enum(["development", "production", "test"])
 			.default("development"),

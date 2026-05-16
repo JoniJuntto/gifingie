@@ -4,17 +4,108 @@ import {
 	streamerProfiles,
 } from "@my-better-t-app/db/schema/domain";
 import { TRPCError } from "@trpc/server";
-import { and, count, eq, gte, isNull } from "drizzle-orm";
+import { and, count, eq, gte, isNull, ne } from "drizzle-orm";
 import { z } from "zod";
 
 import { protectedProcedure, router } from "../index";
+import { normalizeSubmissionCaption } from "../services/captions";
 import {
 	DUPLICATE_WINDOW_SECONDS,
 	OVERLAY_BACKLOG_LIMIT,
 	SUBMIT_RATE_LIMIT_SECONDS,
 } from "../services/constants";
 import { giphyGifInputSchema, normalizeSubmittedGif } from "../services/giphy";
+import { isForcedLiveTwitchLogin } from "../services/live-overrides";
 import { isUserLive } from "../services/twitch";
+import {
+	createSignedUploadUrl,
+	createUploadObjectKey,
+	validateUploadMetadata,
+} from "../services/uploads";
+
+async function getEnrolledProfile(streamerProfileId: string) {
+	const [profile] = await db
+		.select()
+		.from(streamerProfiles)
+		.where(
+			and(
+				eq(streamerProfiles.id, streamerProfileId),
+				eq(streamerProfiles.isEnrolled, true),
+			),
+		)
+		.limit(1);
+
+	if (!profile) {
+		throw new TRPCError({
+			code: "NOT_FOUND",
+			message: "Streamer is not enrolled.",
+		});
+	}
+
+	return profile;
+}
+
+async function assertStreamerLive(profile: {
+	twitchChannelId: string;
+	twitchChannelLogin: string;
+}) {
+	const live =
+		isForcedLiveTwitchLogin(profile.twitchChannelLogin) ||
+		(await isUserLive(profile.twitchChannelId));
+
+	if (!live) {
+		throw new TRPCError({
+			code: "CONFLICT",
+			message: "Streamer is currently offline.",
+		});
+	}
+}
+
+async function assertBacklogAvailable(streamerProfileId: string) {
+	const [backlog] = await db
+		.select({ value: count() })
+		.from(gifSubmissions)
+		.where(
+			and(
+				eq(gifSubmissions.streamerProfileId, streamerProfileId),
+				isNull(gifSubmissions.displayedAt),
+				ne(gifSubmissions.moderationStatus, "rejected"),
+			),
+		);
+
+	if ((backlog?.value ?? 0) > OVERLAY_BACKLOG_LIMIT) {
+		throw new TRPCError({
+			code: "TOO_MANY_REQUESTS",
+			message: "Overlay queue is full.",
+		});
+	}
+}
+
+async function assertViewerRateLimit(input: {
+	streamerProfileId: string;
+	viewerUserId: string;
+}) {
+	const rateWindowStart = new Date(
+		Date.now() - SUBMIT_RATE_LIMIT_SECONDS * 1000,
+	);
+	const [recentViewerSubmission] = await db
+		.select({ value: count() })
+		.from(gifSubmissions)
+		.where(
+			and(
+				eq(gifSubmissions.streamerProfileId, input.streamerProfileId),
+				eq(gifSubmissions.viewerUserId, input.viewerUserId),
+				gte(gifSubmissions.createdAt, rateWindowStart),
+			),
+		);
+
+	if ((recentViewerSubmission?.value ?? 0) > 0) {
+		throw new TRPCError({
+			code: "TOO_MANY_REQUESTS",
+			message: "Please wait before sending another image.",
+		});
+	}
+}
 
 export const gifsRouter = router({
 	submit: protectedProcedure
@@ -22,72 +113,17 @@ export const gifsRouter = router({
 			z.object({
 				streamerProfileId: z.uuid(),
 				gif: giphyGifInputSchema,
+				caption: z.string().max(500).optional(),
 			}),
 		)
 		.mutation(async ({ ctx, input }) => {
-			const [profile] = await db
-				.select()
-				.from(streamerProfiles)
-				.where(
-					and(
-						eq(streamerProfiles.id, input.streamerProfileId),
-						eq(streamerProfiles.isEnrolled, true),
-					),
-				)
-				.limit(1);
-
-			if (!profile) {
-				throw new TRPCError({
-					code: "NOT_FOUND",
-					message: "Streamer is not enrolled.",
-				});
-			}
-
-			const live = await isUserLive(profile.twitchChannelId);
-			if (!live) {
-				throw new TRPCError({
-					code: "CONFLICT",
-					message: "Streamer is currently offline.",
-				});
-			}
-
-			const [backlog] = await db
-				.select({ value: count() })
-				.from(gifSubmissions)
-				.where(
-					and(
-						eq(gifSubmissions.streamerProfileId, profile.id),
-						isNull(gifSubmissions.displayedAt),
-					),
-				);
-
-			if ((backlog?.value ?? 0) > OVERLAY_BACKLOG_LIMIT) {
-				throw new TRPCError({
-					code: "TOO_MANY_REQUESTS",
-					message: "Overlay queue is full.",
-				});
-			}
-
-			const rateWindowStart = new Date(
-				Date.now() - SUBMIT_RATE_LIMIT_SECONDS * 1000,
-			);
-			const [recentViewerSubmission] = await db
-				.select({ value: count() })
-				.from(gifSubmissions)
-				.where(
-					and(
-						eq(gifSubmissions.streamerProfileId, profile.id),
-						eq(gifSubmissions.viewerUserId, ctx.session.user.id),
-						gte(gifSubmissions.createdAt, rateWindowStart),
-					),
-				);
-
-			if ((recentViewerSubmission?.value ?? 0) > 0) {
-				throw new TRPCError({
-					code: "TOO_MANY_REQUESTS",
-					message: "Please wait before sending another GIF.",
-				});
-			}
+			const profile = await getEnrolledProfile(input.streamerProfileId);
+			await assertStreamerLive(profile);
+			await assertBacklogAvailable(profile.id);
+			await assertViewerRateLimit({
+				streamerProfileId: profile.id,
+				viewerUserId: ctx.session.user.id,
+			});
 
 			const gif = normalizeSubmittedGif(input.gif);
 			const duplicateWindowStart = new Date(
@@ -116,11 +152,131 @@ export const gifsRouter = router({
 				.values({
 					streamerProfileId: profile.id,
 					viewerUserId: ctx.session.user.id,
+					source: "giphy",
+					moderationStatus: profile.moderateGiphySubmissions
+						? "pending"
+						: "approved",
 					giphyId: gif.id,
 					gifUrl: gif.gifUrl,
 					previewUrl: gif.previewUrl,
 					title: gif.title,
+					caption: normalizeSubmissionCaption(input.caption),
 				})
+				.returning();
+
+			return submission;
+		}),
+	createUpload: protectedProcedure
+		.input(
+			z.object({
+				streamerProfileId: z.uuid(),
+				contentType: z.string().min(1),
+				byteSize: z.number().int().positive(),
+				originalFilename: z.string().trim().min(1).max(255).optional(),
+			}),
+		)
+		.mutation(async ({ ctx, input }) => {
+			const validationError = validateUploadMetadata(input);
+			if (validationError) {
+				throw new TRPCError({
+					code: "BAD_REQUEST",
+					message: validationError,
+				});
+			}
+
+			const profile = await getEnrolledProfile(input.streamerProfileId);
+			await assertStreamerLive(profile);
+			await assertBacklogAvailable(profile.id);
+			await assertViewerRateLimit({
+				streamerProfileId: profile.id,
+				viewerUserId: ctx.session.user.id,
+			});
+
+			const title = input.originalFilename?.trim() || "Uploaded image";
+			const [submission] = await db
+				.insert(gifSubmissions)
+				.values({
+					streamerProfileId: profile.id,
+					viewerUserId: ctx.session.user.id,
+					source: "upload",
+					moderationStatus: "pending",
+					title,
+					contentType: input.contentType,
+					byteSize: input.byteSize,
+					originalFilename: title,
+				})
+				.returning();
+
+			if (!submission) {
+				throw new TRPCError({
+					code: "INTERNAL_SERVER_ERROR",
+					message: "Could not create upload submission.",
+				});
+			}
+
+			const key = createUploadObjectKey({
+				streamerProfileId: profile.id,
+				submissionId: submission.id,
+				originalFilename: input.originalFilename,
+			});
+			await db
+				.update(gifSubmissions)
+				.set({ s3Key: key })
+				.where(eq(gifSubmissions.id, submission.id));
+
+			const uploadUrl = await createSignedUploadUrl({
+				key,
+				contentType: input.contentType,
+				byteSize: input.byteSize,
+			});
+
+			return {
+				submissionId: submission.id,
+				uploadUrl,
+				headers: {
+					"Content-Type": input.contentType,
+				},
+			};
+		}),
+	completeUpload: protectedProcedure
+		.input(
+			z.object({
+				submissionId: z.number().int().positive(),
+			}),
+		)
+		.mutation(async ({ ctx, input }) => {
+			const [existing] = await db
+				.select({
+					id: gifSubmissions.id,
+					source: gifSubmissions.source,
+					s3Key: gifSubmissions.s3Key,
+					viewerUserId: gifSubmissions.viewerUserId,
+					uploadedAt: gifSubmissions.uploadedAt,
+				})
+				.from(gifSubmissions)
+				.where(eq(gifSubmissions.id, input.submissionId))
+				.limit(1);
+
+			if (
+				!existing ||
+				existing.viewerUserId !== ctx.session.user.id ||
+				existing.source !== "upload" ||
+				!existing.s3Key
+			) {
+				throw new TRPCError({
+					code: "NOT_FOUND",
+					message: "Upload submission not found.",
+				});
+			}
+
+			if (existing.uploadedAt) {
+				return existing;
+			}
+
+			const [submission] = await db
+				.update(gifSubmissions)
+				.set({ uploadedAt: new Date() })
+				.where(eq(gifSubmissions.id, input.submissionId))
 				.returning();
 
 			return submission;
