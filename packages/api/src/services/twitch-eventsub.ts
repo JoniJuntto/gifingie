@@ -5,6 +5,7 @@ import { streamerProfiles } from "@my-better-t-app/db/schema/domain";
 import { env } from "@my-better-t-app/env/server";
 import { eq, or } from "drizzle-orm";
 
+import { getAppAccessToken } from "./twitch";
 import { insertPaymentCredit } from "./submission-payment";
 
 function eventsubCallbackUrl() {
@@ -12,15 +13,15 @@ function eventsubCallbackUrl() {
 }
 
 async function createEventSubSubscription(input: {
-	accessToken: string;
 	type: string;
 	version: string;
 	condition: Record<string, string>;
 }) {
+	const appAccessToken = await getAppAccessToken();
 	const response = await fetch("https://api.twitch.tv/helix/eventsub/subscriptions", {
 		method: "POST",
 		headers: {
-			Authorization: `Bearer ${input.accessToken}`,
+			Authorization: `Bearer ${appAccessToken}`,
 			"Client-Id": env.TWITCH_CLIENT_ID,
 			"Content-Type": "application/json",
 		},
@@ -46,7 +47,6 @@ async function createEventSubSubscription(input: {
 
 export async function ensureStreamerEventSubSubscriptions(input: {
 	broadcasterId: string;
-	accessToken: string;
 	channelPoints: boolean;
 	bits: boolean;
 }) {
@@ -55,7 +55,6 @@ export async function ensureStreamerEventSubSubscriptions(input: {
 	if (input.channelPoints) {
 		subscriptions.push(
 			createEventSubSubscription({
-				accessToken: input.accessToken,
 				type: "channel.channel_points_custom_reward_redemption.add",
 				version: "1",
 				condition: { broadcaster_user_id: input.broadcasterId },
@@ -66,7 +65,6 @@ export async function ensureStreamerEventSubSubscriptions(input: {
 	if (input.bits) {
 		subscriptions.push(
 			createEventSubSubscription({
-				accessToken: input.accessToken,
 				type: "channel.cheer",
 				version: "1",
 				condition: { broadcaster_user_id: input.broadcasterId },

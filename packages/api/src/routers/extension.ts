@@ -1,10 +1,8 @@
-import { cors } from "@elysiajs/cors";
 import { db } from "@my-better-t-app/db";
 import {
 	gifSubmissions,
 	streamerProfiles,
 } from "@my-better-t-app/db/schema/domain";
-import { env } from "@my-better-t-app/env/server";
 import { and, count, desc, eq, gte, isNull, ne } from "drizzle-orm";
 import { Elysia, t } from "elysia";
 
@@ -25,10 +23,23 @@ import {
 	verifyBitsReceipt,
 } from "../services/twitch-extension-jwt";
 
-const EXTENSION_ORIGINS = [
-	/^https:\/\/.*\.ext-twitch\.tv$/,
-	"https://localhost.twitch.tv",
-];
+function isExtensionOrigin(origin: string | null): boolean {
+	if (!origin) return false;
+	return (
+		origin === "https://localhost.twitch.tv" ||
+		/^https:\/\/[a-z0-9-]+\.ext-twitch\.tv$/.test(origin)
+	);
+}
+
+function addExtensionCorsHeaders(
+	origin: string | null,
+	headers: Record<string, string>,
+): void {
+	if (!isExtensionOrigin(origin) || !origin) return;
+	headers["access-control-allow-origin"] = origin;
+	headers["access-control-allow-methods"] = "GET, POST, OPTIONS";
+	headers["access-control-allow-headers"] = "content-type, authorization";
+}
 
 async function extractExtensionContext(request: Request) {
 	const authHeader = request.headers.get("authorization");
@@ -44,13 +55,22 @@ async function extractExtensionContext(request: Request) {
 }
 
 export const extensionRouter = new Elysia({ prefix: "/api/extension" })
-	.use(
-		cors({
-			origin: EXTENSION_ORIGINS,
-			methods: ["GET", "POST", "OPTIONS"],
-			allowedHeaders: ["Content-Type", "Authorization"],
-			credentials: false,
-		}),
+	.onAfterHandle(({ request, set }) => {
+		addExtensionCorsHeaders(
+			request.headers.get("origin"),
+			set.headers as Record<string, string>,
+		);
+	})
+	.options(
+		"/*",
+		({ request, set }) => {
+			addExtensionCorsHeaders(
+				request.headers.get("origin"),
+				set.headers as Record<string, string>,
+			);
+			set.status = 204;
+			return "";
+		},
 	)
 	.get("/channel", async ({ request, status }) => {
 		const ctx = await extractExtensionContext(request);

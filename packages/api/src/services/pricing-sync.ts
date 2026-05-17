@@ -149,17 +149,16 @@ export async function syncStreamerPricing(input: {
 			});
 		}
 
-		if (!twitchAccessToken) {
+		if (needsChannelPoints && !hasRedemptionsScope(twitchScope)) {
 			throw new TRPCError({
 				code: "PRECONDITION_FAILED",
-				message: "Reconnect Twitch to manage paid submissions.",
+				message: "Reconnect Twitch to grant channel points management.",
 			});
 		}
 
 		try {
 			await ensureStreamerEventSubSubscriptions({
 				broadcasterId: input.twitchChannelId,
-				accessToken: twitchAccessToken,
 				channelPoints: needsChannelPoints,
 				bits: needsBits,
 			});

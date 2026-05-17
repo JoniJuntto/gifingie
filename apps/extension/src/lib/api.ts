@@ -1,4 +1,4 @@
-const EBS_BASE = import.meta.env.VITE_EBS_URL ?? "http://localhost:3000";
+const EBS_BASE = "https://gifingie.huikaton.online";
 
 async function request<T>(
 	token: string,

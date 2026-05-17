@@ -407,5 +407,33 @@ export async function fulfillChannelPointsRedemption(input: {
 }
 
 export async function getAppAccessToken() {
-	return auth.getAppAccessToken();
+	try {
+		return await auth.getAppAccessToken();
+	} catch {
+		// Fall through to client-credentials fetch.
+	}
+
+	const response = await fetch("https://id.twitch.tv/oauth2/token", {
+		method: "POST",
+		headers: { "Content-Type": "application/x-www-form-urlencoded" },
+		body: new URLSearchParams({
+			client_id: env.TWITCH_CLIENT_ID,
+			client_secret: env.TWITCH_CLIENT_SECRET,
+			grant_type: "client_credentials",
+		}),
+	});
+
+	if (!response.ok) {
+		const detail = await response.text();
+		throw new Error(
+			`Could not get Twitch app access token (${response.status}): ${detail}`,
+		);
+	}
+
+	const body = (await response.json()) as { access_token?: string };
+	if (!body.access_token) {
+		throw new Error("Twitch did not return an app access token.");
+	}
+
+	return body.access_token;
 }
