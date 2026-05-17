@@ -6,6 +6,7 @@ import { z } from "zod";
 import { publicProcedure, router } from "../index";
 import { LIVE_CACHE_SECONDS } from "../services/constants";
 import { isForcedLiveTwitchLogin } from "../services/live-overrides";
+import { toPublicPrice } from "../services/pricing-schema";
 import { getLiveStreamsByUserIds } from "../services/twitch";
 
 async function refreshStaleProfiles<
@@ -63,6 +64,17 @@ function toPublicStreamer(profile: typeof streamerProfiles.$inferSelect) {
 		uploadAccess: profile.uploadAccess,
 		allowGifSubmissions: profile.allowGifSubmissions,
 		allowSoundSubmissions: profile.allowSoundSubmissions,
+		giphyPrice: toPublicPrice(
+			profile.giphyPriceCurrency,
+			profile.giphyPriceAmount,
+		),
+		uploadPrice: profile.allowCustomUploads
+			? toPublicPrice(profile.uploadPriceCurrency, profile.uploadPriceAmount)
+			: null,
+		soundPrice:
+			profile.allowSoundSubmissions !== false
+				? toPublicPrice(profile.soundPriceCurrency, profile.soundPriceAmount)
+				: null,
 		isLive:
 			profile.isLive || isForcedLiveTwitchLogin(profile.twitchChannelLogin),
 		streamTitle: profile.liveStreamTitle,

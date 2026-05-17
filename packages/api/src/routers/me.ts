@@ -49,6 +49,18 @@ export const meRouter = router({
 						allowSoundSubmissions: streamerProfile.allowSoundSubmissions,
 						giphyAccess: streamerProfile.giphyAccess,
 						uploadAccess: streamerProfile.uploadAccess,
+						giphyPriceCurrency: streamerProfile.giphyPriceCurrency,
+						giphyPriceAmount: streamerProfile.giphyPriceAmount,
+						uploadPriceCurrency: streamerProfile.uploadPriceCurrency,
+						uploadPriceAmount: streamerProfile.uploadPriceAmount,
+						soundPriceCurrency: streamerProfile.soundPriceCurrency,
+						soundPriceAmount: streamerProfile.soundPriceAmount,
+						giphyChannelPointsRewardId:
+							streamerProfile.giphyChannelPointsRewardId,
+						uploadChannelPointsRewardId:
+							streamerProfile.uploadChannelPointsRewardId,
+						soundChannelPointsRewardId:
+							streamerProfile.soundChannelPointsRewardId,
 					}
 				: null,
 		};

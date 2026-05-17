@@ -13,10 +13,5 @@ bun run build
 bun run db:migrate
 sudo systemctl restart gifingie
 sudo systemctl reload nginx
-```
-
-Watch the logs after restarting:
-
-```bash
 sudo journalctl -u gifingie -f
-```
+

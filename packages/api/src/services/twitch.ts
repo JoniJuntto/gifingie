@@ -209,3 +209,104 @@ export async function isChannelSubscriber(input: {
 
 	return body.data.length > 0;
 }
+
+function helixUserHeaders(accessToken: string) {
+	return {
+		Authorization: `Bearer ${accessToken}`,
+		"Client-Id": env.TWITCH_CLIENT_ID,
+		"Content-Type": "application/json",
+	};
+}
+
+export async function upsertChannelPointsReward(input: {
+	broadcasterId: string;
+	accessToken: string;
+	title: string;
+	cost: number;
+	existingRewardId?: string | null;
+}) {
+	if (input.existingRewardId) {
+		const url = new URL(
+			"https://api.twitch.tv/helix/channel_points/custom_rewards",
+		);
+		url.searchParams.set("broadcaster_id", input.broadcasterId);
+		url.searchParams.set("id", input.existingRewardId);
+
+		const response = await fetch(url, {
+			method: "PATCH",
+			headers: helixUserHeaders(input.accessToken),
+			body: JSON.stringify({
+				title: input.title,
+				cost: input.cost,
+				is_enabled: true,
+			}),
+		});
+
+		if (!response.ok) {
+			throw new Error(`Could not update channel points reward: ${response.status}`);
+		}
+
+		const body = (await response.json()) as {
+			data: { id: string }[];
+		};
+		return body.data[0]?.id ?? input.existingRewardId;
+	}
+
+	const url = new URL(
+		"https://api.twitch.tv/helix/channel_points/custom_rewards",
+	);
+	url.searchParams.set("broadcaster_id", input.broadcasterId);
+
+	const response = await fetch(url, {
+		method: "POST",
+		headers: helixUserHeaders(input.accessToken),
+		body: JSON.stringify({
+			title: input.title,
+			cost: input.cost,
+			is_enabled: true,
+		}),
+	});
+
+	if (!response.ok) {
+		throw new Error(`Could not create channel points reward: ${response.status}`);
+	}
+
+	const body = (await response.json()) as {
+		data: { id: string }[];
+	};
+	const rewardId = body.data[0]?.id;
+	if (!rewardId) {
+		throw new Error("Twitch did not return a custom reward id.");
+	}
+	return rewardId;
+}
+
+export async function fulfillChannelPointsRedemption(input: {
+	broadcasterId: string;
+	accessToken: string;
+	rewardId: string;
+	redemptionId: string;
+}) {
+	const url = new URL(
+		"https://api.twitch.tv/helix/channel_points/custom_rewards/redemptions",
+	);
+	url.searchParams.set("broadcaster_id", input.broadcasterId);
+	url.searchParams.set("reward_id", input.rewardId);
+	url.searchParams.set("id", input.redemptionId);
+
+	const response = await fetch(url, {
+		method: "PATCH",
+		headers: helixUserHeaders(input.accessToken),
+		body: JSON.stringify({ status: "FULFILLED" }),
+	});
+
+	if (!response.ok) {
+		throw new Error(
+			`Could not fulfill channel points redemption: ${response.status}`,
+		);
+	}
+}
+
+export async function getAppAccessToken() {
+	return auth.getAppAccessToken();
+}

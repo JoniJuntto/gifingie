@@ -30,6 +30,20 @@ export const viewerAccessEnum = pgEnum("viewer_access", [
 	"followers",
 	"subscribers",
 ]);
+export const priceCurrencyEnum = pgEnum("price_currency", [
+	"none",
+	"channel_points",
+	"bits",
+]);
+export const paymentCreditKindEnum = pgEnum("payment_credit_kind", [
+	"channel_points",
+	"bits",
+]);
+export const paymentCreditStatusEnum = pgEnum("payment_credit_status", [
+	"available",
+	"consumed",
+	"expired",
+]);
 
 export const userPreferences = pgTable("user_preferences", {
 	userId: text("user_id")
@@ -80,6 +94,21 @@ export const streamerProfiles = pgTable(
 			.notNull(),
 		giphyAccess: viewerAccessEnum("giphy_access").default("everyone").notNull(),
 		uploadAccess: viewerAccessEnum("upload_access").default("everyone").notNull(),
+		giphyPriceCurrency: priceCurrencyEnum("giphy_price_currency")
+			.default("none")
+			.notNull(),
+		giphyPriceAmount: integer("giphy_price_amount"),
+		uploadPriceCurrency: priceCurrencyEnum("upload_price_currency")
+			.default("none")
+			.notNull(),
+		uploadPriceAmount: integer("upload_price_amount"),
+		giphyChannelPointsRewardId: text("giphy_channel_points_reward_id"),
+		uploadChannelPointsRewardId: text("upload_channel_points_reward_id"),
+		soundPriceCurrency: priceCurrencyEnum("sound_price_currency")
+			.default("none")
+			.notNull(),
+		soundPriceAmount: integer("sound_price_amount"),
+		soundChannelPointsRewardId: text("sound_channel_points_reward_id"),
 		liveCheckedAt: timestamp("live_checked_at"),
 		isLive: boolean("is_live").default(false).notNull(),
 		liveStreamTitle: text("live_stream_title"),
@@ -152,6 +181,40 @@ export const gifSubmissions = pgTable(
 	],
 );
 
+export const paymentCredits = pgTable(
+	"payment_credits",
+	{
+		id: uuid("id").defaultRandom().primaryKey(),
+		streamerProfileId: uuid("streamer_profile_id")
+			.notNull()
+			.references(() => streamerProfiles.id, { onDelete: "cascade" }),
+		viewerTwitchId: text("viewer_twitch_id").notNull(),
+		viewerUserId: text("viewer_user_id").references(() => user.id, {
+			onDelete: "set null",
+		}),
+		kind: paymentCreditKindEnum("kind").notNull(),
+		amount: integer("amount").notNull(),
+		externalId: text("external_id").notNull(),
+		channelPointsRewardId: text("channel_points_reward_id"),
+		status: paymentCreditStatusEnum("status").default("available").notNull(),
+		consumedSubmissionId: integer("consumed_submission_id").references(
+			() => gifSubmissions.id,
+			{ onDelete: "set null" },
+		),
+		createdAt: timestamp("created_at").defaultNow().notNull(),
+		expiresAt: timestamp("expires_at").notNull(),
+	},
+	(table) => [
+		uniqueIndex("payment_credits_external_id_idx").on(table.externalId),
+		index("payment_credits_viewer_available_idx").on(
+			table.streamerProfileId,
+			table.viewerTwitchId,
+			table.status,
+			table.expiresAt,
+		),
+	],
+);
+
 export const userPreferencesRelations = relations(
 	userPreferences,
 	({ one }) => ({
@@ -170,8 +233,24 @@ export const streamerProfilesRelations = relations(
 			references: [user.id],
 		}),
 		submissions: many(gifSubmissions),
+		paymentCredits: many(paymentCredits),
 	}),
 );
+
+export const paymentCreditsRelations = relations(paymentCredits, ({ one }) => ({
+	streamer: one(streamerProfiles, {
+		fields: [paymentCredits.streamerProfileId],
+		references: [streamerProfiles.id],
+	}),
+	viewer: one(user, {
+		fields: [paymentCredits.viewerUserId],
+		references: [user.id],
+	}),
+	consumedSubmission: one(gifSubmissions, {
+		fields: [paymentCredits.consumedSubmissionId],
+		references: [gifSubmissions.id],
+	}),
+}));
 
 export const gifSubmissionsRelations = relations(gifSubmissions, ({ one }) => ({
 	streamer: one(streamerProfiles, {

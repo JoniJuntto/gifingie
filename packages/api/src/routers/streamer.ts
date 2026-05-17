@@ -11,6 +11,11 @@ import { z } from "zod";
 import { protectedProcedure, router } from "../index";
 import { OVERLAY_BACKLOG_LIMIT } from "../services/constants";
 import { overlaySettingsInputSchema } from "../services/overlay-settings";
+import {
+	normalizePriceAmount,
+	pricingInputSchema,
+} from "../services/pricing-schema";
+import { syncStreamerPricing } from "../services/pricing-sync";
 import { viewerAccessLevelSchema } from "../services/viewer-access-schema";
 import { createOverlayToken } from "../services/tokens";
 import { getTwitchUserById } from "../services/twitch";
@@ -203,6 +208,79 @@ export const streamerRouter = router({
 			}
 
 			return profile;
+		}),
+	updatePricingSettings: protectedProcedure
+		.input(pricingInputSchema)
+		.mutation(async ({ ctx, input }) => {
+			const [existing] = await db
+				.select()
+				.from(streamerProfiles)
+				.where(eq(streamerProfiles.userId, ctx.session.user.id))
+				.limit(1);
+
+			if (!existing) {
+				throw new TRPCError({
+					code: "NOT_FOUND",
+					message: "Streamer profile not found.",
+				});
+			}
+
+			const giphyPriceAmount = normalizePriceAmount(
+				input.giphyPriceCurrency,
+				input.giphyPriceAmount,
+			);
+			const uploadPriceAmount = normalizePriceAmount(
+				input.uploadPriceCurrency,
+				input.uploadPriceAmount,
+			);
+			const soundPriceAmount = normalizePriceAmount(
+				input.soundPriceCurrency,
+				input.soundPriceAmount,
+			);
+
+			const [profile] = await db
+				.update(streamerProfiles)
+				.set({
+					giphyPriceCurrency: input.giphyPriceCurrency,
+					giphyPriceAmount,
+					uploadPriceCurrency: input.uploadPriceCurrency,
+					uploadPriceAmount,
+					soundPriceCurrency: input.soundPriceCurrency,
+					soundPriceAmount,
+					updatedAt: new Date(),
+				})
+				.where(eq(streamerProfiles.id, existing.id))
+				.returning();
+
+			if (!profile) {
+				throw new TRPCError({
+					code: "NOT_FOUND",
+					message: "Streamer profile not found.",
+				});
+			}
+
+			await syncStreamerPricing({
+				profileId: profile.id,
+				userId: profile.userId,
+				twitchChannelId: profile.twitchChannelId,
+				giphyPriceCurrency: profile.giphyPriceCurrency,
+				giphyPriceAmount: profile.giphyPriceAmount,
+				uploadPriceCurrency: profile.uploadPriceCurrency,
+				uploadPriceAmount: profile.uploadPriceAmount,
+				soundPriceCurrency: profile.soundPriceCurrency,
+				soundPriceAmount: profile.soundPriceAmount,
+				giphyChannelPointsRewardId: profile.giphyChannelPointsRewardId,
+				uploadChannelPointsRewardId: profile.uploadChannelPointsRewardId,
+				soundChannelPointsRewardId: profile.soundChannelPointsRewardId,
+			});
+
+			const [synced] = await db
+				.select()
+				.from(streamerProfiles)
+				.where(eq(streamerProfiles.id, profile.id))
+				.limit(1);
+
+			return synced ?? profile;
 		}),
 	pendingModeration: protectedProcedure.query(async ({ ctx }) => {
 		const profile = await getStreamerProfileForUser(ctx.session.user.id);

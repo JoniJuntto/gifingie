@@ -1,8 +1,10 @@
 TODO:
 - [x] Make it possible to resize and move the overlay gif positioning in the browser from settings page and it should be streamer specific, with live-previewq.
-- [ ] Make the /streamer page real-time
+- [x] Add sender nickname to the Recent submissions
+- [x] Make the /streamer page real-time
+- [x] Make it possible to send sounds. 
 - [x] For custom uploaded gifs, make a new tab in viewer page and show all custom images sent to that channel and make it possible for other people to send that same image again :) 
 - [x] Mods should be able to allow gifs 
-- [ ] Custom captions should be moderated somehow :D  
-- [ ] Add possibility add "price" to gif submission by requiring bits, channel_points or donations to redeem gifs. Streamer can decide seperately whether the custom uploads are only ones with price or both. Custom uploads can have different price and value for example custom_uploads could be 500 bits and normal gifs free, or  custom_uploads could be 500 channel_points and normal gifs x bits, or any other combo. Can be changed in streamer settings
-- [ ] Add possibility to only allow subs / followers / everyone to send gifs and/or upload gifs. Can be changed in streamer settings 
+- [x] Custom captions should be moderated somehow :D  
+- [f] Add possibility add "price" to gif submission by requiring bits, channel_points or donations to redeem gifs. Streamer can decide seperately whether the custom uploads are only ones with price or both. Custom uploads can have different price and value for example custom_uploads could be 500 bits and normal gifs free, or  custom_uploads could be 500 channel_points and normal gifs x bits, or any other combo. Can be changed in streamer settings
+- [f] Add possibility to only allow subs / followers / everyone to send gifs and/or upload gifs. Can be changed in streamer settings 

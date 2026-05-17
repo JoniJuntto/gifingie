@@ -13,6 +13,11 @@ import { toast } from "sonner";
 
 import { appUrl, authClient } from "@/lib/auth-client";
 import {
+	formatPrice,
+	paymentInstructions,
+	type PublicPrice,
+} from "@/lib/submission-pricing";
+import {
 	canSendGiphyToStreamer,
 	canUseCustomUploadsForStreamer,
 	getGiphyAccessHint,
@@ -204,6 +209,9 @@ export type Streamer = {
 	allowSoundSubmissions?: boolean;
 	giphyAccess?: "everyone" | "followers" | "subscribers";
 	uploadAccess?: "everyone" | "followers" | "subscribers";
+	giphyPrice?: PublicPrice | null;
+	uploadPrice?: PublicPrice | null;
+	soundPrice?: PublicPrice | null;
 };
 
 type GifResult = {
@@ -538,6 +546,9 @@ export function SearchScreen({
 		null,
 	);
 	const [caption, setCaption] = useState("");
+	const [selectedPaymentCreditId, setSelectedPaymentCreditId] = useState<
+		string | null
+	>(null);
 	const fileRef = useRef<HTMLInputElement>(null);
 	const soundFileRef = useRef<HTMLInputElement>(null);
 	const searchRef = useRef<HTMLInputElement>(null);
@@ -657,6 +668,36 @@ export function SearchScreen({
 		enabled: canUseSounds,
 	});
 
+	const paymentCredits = useQuery({
+		...trpc.gifs.listAvailablePaymentCredits.queryOptions({
+			streamerProfileId: streamer.id,
+		}),
+		enabled: Boolean(session && !session.user.isAnonymous),
+		refetchInterval: 15_000,
+	});
+
+	const activePrice: PublicPrice | null =
+		selectedImage?.source === "upload"
+			? (streamer.uploadPrice ?? null)
+			: selectedImage?.source === "giphy"
+				? (streamer.giphyPrice ?? null)
+				: selectedImage?.source === "sound"
+					? (streamer.soundPrice ?? null)
+					: null;
+	const needsPayment = Boolean(activePrice);
+	const paymentHint = paymentInstructions(activePrice);
+	const availableCredits = paymentCredits.data ?? [];
+
+	useEffect(() => {
+		setSelectedPaymentCreditId(null);
+	}, [selectedImage?.source, selectedImage?.id, activeTab]);
+
+	useEffect(() => {
+		if (availableCredits.length === 1) {
+			setSelectedPaymentCreditId(availableCredits[0]?.id ?? null);
+		}
+	}, [availableCredits]);
+
 	const submit = useMutation(
 		trpc.gifs.submit.mutationOptions({
 			onSuccess: async (submission) => {
@@ -712,6 +753,7 @@ export function SearchScreen({
 				contentType: file.type,
 				byteSize: file.size,
 				originalFilename: file.name,
+				paymentCreditId: selectedPaymentCreditId ?? undefined,
 			});
 			const uploadResponse = await fetch(uploadRequest.uploadUrl, {
 				method: "PUT",
@@ -739,6 +781,7 @@ export function SearchScreen({
 				contentType: file.type,
 				byteSize: file.size,
 				originalFilename: file.name,
+				paymentCreditId: selectedPaymentCreditId ?? undefined,
 			});
 			const uploadResponse = await fetch(uploadRequest.uploadUrl, {
 				method: "PUT",
@@ -771,10 +814,16 @@ export function SearchScreen({
 		setActiveTab(tab);
 		setSelectedImage(null);
 		setCaption("");
+		setSelectedPaymentCreditId(null);
 	}
 
 	const handleSend = useCallback(() => {
 		if (!selectedImage) return;
+		const paymentCreditId = selectedPaymentCreditId ?? undefined;
+		if (needsPayment && !paymentCreditId) {
+			toast.error(paymentHint ?? "Complete payment on Twitch first.");
+			return;
+		}
 		if (selectedImage.source === "giphy") {
 			if (!canSendGiphy) {
 				toast.error(giphyAccessHint ?? "You cannot send GIFs to this channel.");
@@ -783,6 +832,7 @@ export function SearchScreen({
 			submit.mutate({
 				streamerProfileId: streamer.id,
 				caption,
+				paymentCreditId,
 				gif: {
 					id: selectedImage.id,
 					title: selectedImage.title,
@@ -805,6 +855,7 @@ export function SearchScreen({
 				streamerProfileId: streamer.id,
 				submissionId: selectedImage.id,
 				caption,
+				paymentCreditId,
 			});
 			return;
 		}
@@ -812,6 +863,7 @@ export function SearchScreen({
 			streamerProfileId: streamer.id,
 			submissionId: selectedImage.id,
 			caption,
+			paymentCreditId,
 		});
 	}, [
 		selectedImage,
@@ -820,6 +872,9 @@ export function SearchScreen({
 		giphyAccessHint,
 		uploadAccessHint,
 		canUseSounds,
+		needsPayment,
+		paymentHint,
+		selectedPaymentCreditId,
 		submit,
 		resendCustomUpload,
 		resendChannelSound,
@@ -1180,6 +1235,17 @@ export function SearchScreen({
 												e.currentTarget.value = "";
 												return;
 											}
+											if (
+												streamer.uploadPrice &&
+												!selectedPaymentCreditId
+											) {
+												toast.error(
+													paymentInstructions(streamer.uploadPrice) ??
+														"Complete payment on Twitch first.",
+												);
+												e.currentTarget.value = "";
+												return;
+											}
 											upload.mutate(file);
 										}}
 									/>
@@ -1261,6 +1327,14 @@ export function SearchScreen({
 									if (!file) return;
 									if (file.size > 5 * 1024 * 1024) {
 										toast.error("Sound must be 5 MB or smaller.");
+										e.currentTarget.value = "";
+										return;
+									}
+									if (streamer.soundPrice && !selectedPaymentCreditId) {
+										toast.error(
+											paymentInstructions(streamer.soundPrice) ??
+												"Complete payment on Twitch first.",
+										);
 										e.currentTarget.value = "";
 										return;
 									}
@@ -1635,6 +1709,53 @@ export function SearchScreen({
 						</div>
 					</div>
 
+					{needsPayment && (
+						<div
+							style={{
+								flex: "1 1 220px",
+								minWidth: 0,
+								display: "flex",
+								flexDirection: "column",
+								gap: 6,
+							}}
+						>
+							<div
+								style={{
+									fontSize: 11,
+									color: "rgba(255,255,255,0.55)",
+									fontFamily: "var(--gf-font-ui)",
+								}}
+							>
+								{formatPrice(activePrice)} · {paymentHint}
+							</div>
+							{availableCredits.length > 0 ? (
+								<select
+									className="gf-input boxed"
+									value={selectedPaymentCreditId ?? ""}
+									onChange={(event) =>
+										setSelectedPaymentCreditId(
+											event.target.value || null,
+										)
+									}
+									style={{
+										background: "rgba(255,255,255,0.08)",
+										color: "var(--gf-on-inv)",
+										fontSize: 13,
+									}}
+								>
+									<option value="">Select payment credit</option>
+									{availableCredits.map((credit) => (
+										<option key={credit.id} value={credit.id}>
+											{credit.kind === "channel_points"
+												? `${credit.amount} channel points`
+												: `${credit.amount} bits`}
+										</option>
+									))}
+								</select>
+							) : null}
+						</div>
+					)}
+
 					<span
 						style={{
 							width: 1,
@@ -1679,11 +1800,16 @@ export function SearchScreen({
 							isSending ||
 							(selectedImage.source === "giphy" && !canSendGiphy) ||
 							(selectedImage.source === "upload" && !canUseCustomUploads) ||
-							(selectedImage.source === "sound" && !canUseSounds)
+							(selectedImage.source === "sound" && !canUseSounds) ||
+							(needsPayment && !selectedPaymentCreditId)
 						}
 						onClick={handleSend}
 					>
-						{isSending ? "Sending…" : "Send"}
+						{isSending
+							? "Sending…"
+							: activePrice
+								? `Send · ${formatPrice(activePrice)}`
+								: "Send"}
 						<SendIcon size={14} />
 					</button>
 

@@ -27,7 +27,14 @@ import {
 	validateImageUploadMetadata,
 	validateSoundUploadMetadata,
 } from "../services/uploads";
+import {
+	assertSubmissionPayment,
+	consumePaymentCredit,
+	listAvailablePaymentCredits,
+} from "../services/submission-payment";
 import { assertViewerAccess } from "../services/viewer-access";
+
+const paymentCreditIdSchema = z.uuid().optional();
 
 function assertGifSubmissionsAllowed(profile: {
 	allowGifSubmissions: boolean;
@@ -135,7 +142,50 @@ async function assertViewerRateLimit(input: {
 	}
 }
 
+async function finalizeSubmissionPayment(input: {
+	profile: {
+		id: string;
+		userId: string;
+		twitchChannelId: string;
+		giphyPriceCurrency: typeof streamerProfiles.$inferSelect.giphyPriceCurrency;
+		giphyPriceAmount: number | null;
+		uploadPriceCurrency: typeof streamerProfiles.$inferSelect.uploadPriceCurrency;
+		uploadPriceAmount: number | null;
+		soundPriceCurrency: typeof streamerProfiles.$inferSelect.soundPriceCurrency;
+		soundPriceAmount: number | null;
+	};
+	action: "giphy" | "upload" | "sound";
+	viewerUserId: string;
+	paymentCreditId?: string;
+	submissionId: number;
+}) {
+	const credit = await assertSubmissionPayment({
+		profile: input.profile,
+		action: input.action,
+		viewerUserId: input.viewerUserId,
+		paymentCreditId: input.paymentCreditId,
+	});
+
+	if (credit) {
+		await consumePaymentCredit({
+			creditId: credit.id,
+			submissionId: input.submissionId,
+			streamerUserId: input.profile.userId,
+			broadcasterId: input.profile.twitchChannelId,
+		});
+	}
+}
+
 export const gifsRouter = router({
+	listAvailablePaymentCredits: protectedProcedure
+		.input(z.object({ streamerProfileId: z.uuid() }))
+		.query(async ({ ctx, input }) => {
+			await getEnrolledProfile(input.streamerProfileId);
+			return listAvailablePaymentCredits({
+				streamerProfileId: input.streamerProfileId,
+				viewerUserId: ctx.session.user.id,
+			});
+		}),
 	listCustomUploads: protectedProcedure
 		.input(z.object({ streamerProfileId: z.uuid() }))
 		.query(async ({ ctx, input }) => {
@@ -199,6 +249,7 @@ export const gifsRouter = router({
 				streamerProfileId: z.uuid(),
 				gif: giphyGifInputSchema,
 				caption: z.string().max(500).optional(),
+				paymentCreditId: paymentCreditIdSchema,
 			}),
 		)
 		.mutation(async ({ ctx, input }) => {
@@ -263,6 +314,21 @@ export const gifsRouter = router({
 				})
 				.returning();
 
+			if (!submission) {
+				throw new TRPCError({
+					code: "INTERNAL_SERVER_ERROR",
+					message: "Could not create submission.",
+				});
+			}
+
+			await finalizeSubmissionPayment({
+				profile,
+				action: "giphy",
+				viewerUserId: ctx.session.user.id,
+				paymentCreditId: input.paymentCreditId,
+				submissionId: submission.id,
+			});
+
 			return submission;
 		}),
 	createUpload: protectedProcedure
@@ -272,6 +338,7 @@ export const gifsRouter = router({
 				contentType: z.string().min(1),
 				byteSize: z.number().int().positive(),
 				originalFilename: z.string().trim().min(1).max(255).optional(),
+				paymentCreditId: paymentCreditIdSchema,
 			}),
 		)
 		.mutation(async ({ ctx, input }) => {
@@ -321,6 +388,14 @@ export const gifsRouter = router({
 					message: "Could not create upload submission.",
 				});
 			}
+
+			await finalizeSubmissionPayment({
+				profile,
+				action: "upload",
+				viewerUserId: ctx.session.user.id,
+				paymentCreditId: input.paymentCreditId,
+				submissionId: submission.id,
+			});
 
 			const key = createUploadObjectKey({
 				streamerProfileId: profile.id,
@@ -404,6 +479,7 @@ export const gifsRouter = router({
 				streamerProfileId: z.uuid(),
 				submissionId: z.number().int().positive(),
 				caption: z.string().max(500).optional(),
+				paymentCreditId: paymentCreditIdSchema,
 			}),
 		)
 		.mutation(async ({ ctx, input }) => {
@@ -485,6 +561,21 @@ export const gifsRouter = router({
 				})
 				.returning();
 
+			if (!submission) {
+				throw new TRPCError({
+					code: "INTERNAL_SERVER_ERROR",
+					message: "Could not create submission.",
+				});
+			}
+
+			await finalizeSubmissionPayment({
+				profile,
+				action: "upload",
+				viewerUserId: ctx.session.user.id,
+				paymentCreditId: input.paymentCreditId,
+				submissionId: submission.id,
+			});
+
 			return submission;
 		}),
 	listChannelSounds: protectedProcedure
@@ -538,6 +629,7 @@ export const gifsRouter = router({
 				contentType: z.string().min(1),
 				byteSize: z.number().int().positive(),
 				originalFilename: z.string().trim().min(1).max(255).optional(),
+				paymentCreditId: paymentCreditIdSchema,
 			}),
 		)
 		.mutation(async ({ ctx, input }) => {
@@ -581,6 +673,14 @@ export const gifsRouter = router({
 					message: "Could not create sound upload submission.",
 				});
 			}
+
+			await finalizeSubmissionPayment({
+				profile,
+				action: "sound",
+				viewerUserId: ctx.session.user.id,
+				paymentCreditId: input.paymentCreditId,
+				submissionId: submission.id,
+			});
 
 			const key = createUploadObjectKey({
 				streamerProfileId: profile.id,
@@ -659,6 +759,7 @@ export const gifsRouter = router({
 				streamerProfileId: z.uuid(),
 				submissionId: z.number().int().positive(),
 				caption: z.string().max(500).optional(),
+				paymentCreditId: paymentCreditIdSchema,
 			}),
 		)
 		.mutation(async ({ ctx, input }) => {
@@ -728,6 +829,21 @@ export const gifsRouter = router({
 					displayedAt: null,
 				})
 				.returning();
+
+			if (!submission) {
+				throw new TRPCError({
+					code: "INTERNAL_SERVER_ERROR",
+					message: "Could not resend sound.",
+				});
+			}
+
+			await finalizeSubmissionPayment({
+				profile,
+				action: "sound",
+				viewerUserId: ctx.session.user.id,
+				paymentCreditId: input.paymentCreditId,
+				submissionId: submission.id,
+			});
 
 			return submission;
 		}),

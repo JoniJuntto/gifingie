@@ -137,11 +137,12 @@ function BigStat({
 }
 
 function RouteComponent() {
-	const me = useQuery(trpc.me.get.queryOptions());
-	const recent = useQuery(trpc.streamer.recentSubmissions.queryOptions());
-	const pendingModeration = useQuery(
-		trpc.streamer.pendingModeration.queryOptions(),
-	);
+	const me = useQuery({ ...trpc.me.get.queryOptions(), refetchInterval: 10_000 });
+	const recent = useQuery({ ...trpc.streamer.recentSubmissions.queryOptions(), refetchInterval: 5_000 });
+	const pendingModeration = useQuery({
+		...trpc.streamer.pendingModeration.queryOptions(),
+		refetchInterval: 3_000,
+	});
 
 	const enroll = useMutation(
 		trpc.streamer.enroll.mutationOptions({

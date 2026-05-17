@@ -41,6 +41,15 @@ const VIEWER_ACCESS_OPTIONS: { value: ViewerAccessLevel; label: string }[] = [
 ];
 
 const TWITCH_SUBSCRIPTIONS_SCOPE = "channel:read:subscriptions";
+const TWITCH_REDEMPTIONS_SCOPE = "channel:manage:redemptions";
+
+type PriceCurrency = "none" | "channel_points" | "bits";
+
+const PRICE_CURRENCY_OPTIONS: { value: PriceCurrency; label: string }[] = [
+	{ value: "none", label: "Free" },
+	{ value: "channel_points", label: "Channel points" },
+	{ value: "bits", label: "Bits" },
+];
 
 function moderationSettingsInput(
 	profile: {
@@ -391,6 +400,25 @@ function RouteComponent() {
 			onError: (e) => toast.error(e.message),
 		}),
 	);
+	const updatePricingSettings = useMutation(
+		trpc.streamer.updatePricingSettings.mutationOptions({
+			onSuccess: async () => {
+				await queryClient.invalidateQueries();
+				toast.success("Pricing settings saved");
+			},
+			onError: (e) => toast.error(e.message),
+		}),
+	);
+
+	const [giphyPriceCurrency, setGiphyPriceCurrency] =
+		useState<PriceCurrency>("none");
+	const [giphyPriceAmount, setGiphyPriceAmount] = useState("");
+	const [uploadPriceCurrency, setUploadPriceCurrency] =
+		useState<PriceCurrency>("none");
+	const [uploadPriceAmount, setUploadPriceAmount] = useState("");
+	const [soundPriceCurrency, setSoundPriceCurrency] =
+		useState<PriceCurrency>("none");
+	const [soundPriceAmount, setSoundPriceAmount] = useState("");
 
 	useEffect(() => {
 		const saved = me.data?.streamerProfile;
@@ -411,12 +439,28 @@ function RouteComponent() {
 					DEFAULT_OVERLAY_LAYOUT.overlayGifHeightPercent,
 			}),
 		);
+		setGiphyPriceCurrency(saved.giphyPriceCurrency ?? "none");
+		setGiphyPriceAmount(
+			saved.giphyPriceAmount ? String(saved.giphyPriceAmount) : "",
+		);
+		setUploadPriceCurrency(saved.uploadPriceCurrency ?? "none");
+		setUploadPriceAmount(
+			saved.uploadPriceAmount ? String(saved.uploadPriceAmount) : "",
+		);
+		setSoundPriceCurrency(saved.soundPriceCurrency ?? "none");
+		setSoundPriceAmount(
+			saved.soundPriceAmount ? String(saved.soundPriceAmount) : "",
+		);
 	}, [me.data?.streamerProfile]);
 
 	const profile = me.data?.streamerProfile;
 	const needsSubscriptionScopeReconnect =
 		profile?.giphyAccess === "subscribers" ||
 		profile?.uploadAccess === "subscribers";
+	const needsRedemptionsScopeReconnect =
+		giphyPriceCurrency === "channel_points" ||
+		uploadPriceCurrency === "channel_points" ||
+		soundPriceCurrency === "channel_points";
 
 	const reconnectTwitchForSubscriptions = () => {
 		authClient.signIn.social({
@@ -428,6 +472,42 @@ function RouteComponent() {
 			],
 		});
 	};
+
+	const reconnectTwitchForPricing = () => {
+		authClient.signIn.social({
+			provider: "twitch",
+			callbackURL: `${window.location.origin}/settings`,
+			scopes: [
+				"user:read:moderated_channels",
+				TWITCH_SUBSCRIPTIONS_SCOPE,
+				TWITCH_REDEMPTIONS_SCOPE,
+			],
+		});
+	};
+
+	function savePricingSettings() {
+		if (!profile) return;
+		const giphyAmount =
+			giphyPriceCurrency === "none"
+				? null
+				: Number.parseInt(giphyPriceAmount, 10);
+		const uploadAmount =
+			uploadPriceCurrency === "none"
+				? null
+				: Number.parseInt(uploadPriceAmount, 10);
+		const soundAmount =
+			soundPriceCurrency === "none"
+				? null
+				: Number.parseInt(soundPriceAmount, 10);
+		updatePricingSettings.mutate({
+			giphyPriceCurrency,
+			giphyPriceAmount: giphyAmount,
+			uploadPriceCurrency,
+			uploadPriceAmount: uploadAmount,
+			soundPriceCurrency,
+			soundPriceAmount: soundAmount,
+		});
+	}
 
 	const shareUrl = profile
 		? `${window.location.origin}/s/${profile.twitchChannelLogin}`
@@ -1121,6 +1201,161 @@ function RouteComponent() {
 											type="button"
 											className="gf-btn sm"
 											onClick={reconnectTwitchForSubscriptions}
+										>
+											Reconnect Twitch
+										</button>
+									</SettingRow>
+								)}
+
+								<SettingRow
+									title="GIPHY price"
+									sub="Viewers pay on Twitch (channel points or bits), then send here. Leave free to skip payment."
+								>
+									<div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+										<select
+											className="gf-input boxed"
+											value={giphyPriceCurrency}
+											disabled={!profile || updatePricingSettings.isPending}
+											onChange={(event) =>
+												setGiphyPriceCurrency(
+													event.target.value as PriceCurrency,
+												)
+											}
+										>
+											{PRICE_CURRENCY_OPTIONS.map((option) => (
+												<option key={option.value} value={option.value}>
+													{option.label}
+												</option>
+											))}
+										</select>
+										<input
+											className="gf-input boxed"
+											type="number"
+											min={1}
+											disabled={
+												!profile ||
+												updatePricingSettings.isPending ||
+												giphyPriceCurrency === "none"
+											}
+											value={giphyPriceAmount}
+											onChange={(event) =>
+												setGiphyPriceAmount(event.target.value)
+											}
+											placeholder="Amount"
+											style={{ width: 100 }}
+										/>
+									</div>
+								</SettingRow>
+								<SettingRow
+									title="Custom upload price"
+									sub="Separate from GIPHY pricing. Requires custom uploads to be enabled."
+								>
+									<div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+										<select
+											className="gf-input boxed"
+											value={uploadPriceCurrency}
+											disabled={
+												!profile ||
+												!profile.allowCustomUploads ||
+												updatePricingSettings.isPending
+											}
+											onChange={(event) =>
+												setUploadPriceCurrency(
+													event.target.value as PriceCurrency,
+												)
+											}
+										>
+											{PRICE_CURRENCY_OPTIONS.map((option) => (
+												<option key={option.value} value={option.value}>
+													{option.label}
+												</option>
+											))}
+										</select>
+										<input
+											className="gf-input boxed"
+											type="number"
+											min={1}
+											disabled={
+												!profile ||
+												!profile.allowCustomUploads ||
+												updatePricingSettings.isPending ||
+												uploadPriceCurrency === "none"
+											}
+											value={uploadPriceAmount}
+											onChange={(event) =>
+												setUploadPriceAmount(event.target.value)
+											}
+											placeholder="Amount"
+											style={{ width: 100 }}
+										/>
+									</div>
+								</SettingRow>
+								<SettingRow
+									title="Sound price"
+									sub="Separate from GIF pricing. Requires sound submissions to be enabled."
+								>
+									<div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+										<select
+											className="gf-input boxed"
+											value={soundPriceCurrency}
+											disabled={
+												!profile ||
+												profile.allowSoundSubmissions === false ||
+												updatePricingSettings.isPending
+											}
+											onChange={(event) =>
+												setSoundPriceCurrency(
+													event.target.value as PriceCurrency,
+												)
+											}
+										>
+											{PRICE_CURRENCY_OPTIONS.map((option) => (
+												<option key={option.value} value={option.value}>
+													{option.label}
+												</option>
+											))}
+										</select>
+										<input
+											className="gf-input boxed"
+											type="number"
+											min={1}
+											disabled={
+												!profile ||
+												profile.allowSoundSubmissions === false ||
+												updatePricingSettings.isPending ||
+												soundPriceCurrency === "none"
+											}
+											value={soundPriceAmount}
+											onChange={(event) =>
+												setSoundPriceAmount(event.target.value)
+											}
+											placeholder="Amount"
+											style={{ width: 100 }}
+										/>
+									</div>
+								</SettingRow>
+								<SettingRow
+									title="Save pricing"
+									sub="Creates or updates Twitch channel point rewards when needed."
+								>
+									<button
+										type="button"
+										className="gf-btn sm"
+										disabled={!profile || updatePricingSettings.isPending}
+										onClick={savePricingSettings}
+									>
+										Save pricing
+									</button>
+								</SettingRow>
+								{needsRedemptionsScopeReconnect && (
+									<SettingRow
+										title="Twitch reconnect for channel points"
+										sub="Channel point rewards require the channel:manage:redemptions scope."
+									>
+										<button
+											type="button"
+											className="gf-btn sm"
+											onClick={reconnectTwitchForPricing}
 										>
 											Reconnect Twitch
 										</button>

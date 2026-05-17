@@ -22,6 +22,7 @@ export function createAuth() {
 				scope: [
 					"user:read:moderated_channels",
 					"channel:read:subscriptions",
+					"channel:manage:redemptions",
 				],
 			},
 		},
