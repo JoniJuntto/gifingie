@@ -8,6 +8,7 @@ import { TRPCError } from "@trpc/server";
 import { and, desc, eq, inArray, isNotNull, or } from "drizzle-orm";
 import * as z from "zod";
 
+import { captionRequiresReview } from "../services/captions";
 import { protectedProcedure, router } from "../index";
 import { getModeratedChannelsForUser } from "../services/twitch";
 import { createSignedDisplayUrl } from "../services/uploads";
@@ -203,7 +204,12 @@ export const moderationRouter = router({
 				.orderBy(desc(gifSubmissions.createdAt))
 				.limit(50);
 
-			return withDisplayUrls(submissions);
+			const submissionsWithUrls = await withDisplayUrls(submissions);
+
+			return submissionsWithUrls.map((submission) => ({
+				...submission,
+				captionRequiresReview: captionRequiresReview(submission.caption),
+			}));
 		}),
 	approveSubmission: protectedProcedure
 		.input(submissionActionInput)

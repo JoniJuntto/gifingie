@@ -588,8 +588,12 @@ export function SearchScreen({
 
 	const resendCustomUpload = useMutation(
 		trpc.gifs.resendCustomUpload.mutationOptions({
-			onSuccess: async () => {
-				toast.success("Custom image sent to overlay");
+			onSuccess: async (submission) => {
+				toast.success(
+					submission.moderationStatus === "pending"
+						? "Sent for approval"
+						: "Custom image sent to overlay",
+				);
 				setSelectedImage(null);
 				setCaption("");
 				await queryClient.invalidateQueries();

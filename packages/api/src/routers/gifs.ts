@@ -8,7 +8,10 @@ import { and, count, desc, eq, gte, isNotNull, isNull, ne } from "drizzle-orm";
 import { z } from "zod";
 
 import { protectedProcedure, router, sessionProcedure } from "../index";
-import { normalizeSubmissionCaption } from "../services/captions";
+import {
+	normalizeSubmissionCaption,
+	resolveSubmissionModerationStatus,
+} from "../services/captions";
 import {
 	DUPLICATE_WINDOW_SECONDS,
 	OVERLAY_BACKLOG_LIMIT,
@@ -199,20 +202,25 @@ export const gifsRouter = router({
 				});
 			}
 
+			const caption = normalizeSubmissionCaption(input.caption);
+			const moderationStatus = resolveSubmissionModerationStatus({
+				caption,
+				source: "giphy",
+				moderateGiphySubmissions: profile.moderateGiphySubmissions,
+			});
+
 			const [submission] = await db
 				.insert(gifSubmissions)
 				.values({
 					streamerProfileId: profile.id,
 					viewerUserId: ctx.session.user.id,
 					source: "giphy",
-					moderationStatus: profile.moderateGiphySubmissions
-						? "pending"
-						: "approved",
+					moderationStatus,
 					giphyId: gif.id,
 					gifUrl: gif.gifUrl,
 					previewUrl: gif.previewUrl,
 					title: gif.title,
-					caption: normalizeSubmissionCaption(input.caption),
+					caption,
 				})
 				.returning();
 
@@ -382,17 +390,24 @@ export const gifsRouter = router({
 				});
 			}
 
+			const caption = normalizeSubmissionCaption(input.caption);
+			const moderationStatus = resolveSubmissionModerationStatus({
+				caption,
+				source: "upload",
+				moderateGiphySubmissions: profile.moderateGiphySubmissions,
+			});
+
 			const [submission] = await db
 				.insert(gifSubmissions)
 				.values({
 					streamerProfileId: profile.id,
 					viewerUserId: ctx.session.user.id,
 					source: "upload",
-					moderationStatus: "approved",
+					moderationStatus,
 					gifUrl: original.gifUrl,
 					previewUrl: original.previewUrl,
 					title: original.title,
-					caption: normalizeSubmissionCaption(input.caption),
+					caption,
 					s3Key: original.s3Key,
 					contentType: original.contentType,
 					byteSize: original.byteSize,

@@ -65,7 +65,7 @@ function RouteComponent() {
 	}, [channelList, selectedProfileId]);
 
 	const reconnectTwitch = () => {
-		authClient.linkSocial({
+		authClient.signIn.social({
 			provider: "twitch",
 			callbackURL: appUrl("/moderation"),
 			scopes: TWITCH_MODERATION_SCOPES,
@@ -434,16 +434,41 @@ function RouteComponent() {
 											{sub.caption ? (
 												<div
 													style={{
-														fontSize: 12,
-														color: "var(--gf-muted)",
-														fontFamily: "var(--gf-font-ui)",
+														display: "flex",
+														alignItems: "center",
+														gap: 8,
 														marginTop: 4,
-														overflow: "hidden",
-														textOverflow: "ellipsis",
-														whiteSpace: "nowrap",
+														minWidth: 0,
 													}}
 												>
-													{sub.caption}
+													{sub.captionRequiresReview ? (
+														<span
+															style={{
+																fontSize: 10,
+																fontWeight: 600,
+																letterSpacing: "0.04em",
+																textTransform: "uppercase",
+																color: "var(--gf-warn, #c9a227)",
+																fontFamily: "var(--gf-font-mono)",
+																flex: "0 0 auto",
+															}}
+														>
+															Caption review
+														</span>
+													) : null}
+													<div
+														style={{
+															fontSize: 12,
+															color: "var(--gf-muted)",
+															fontFamily: "var(--gf-font-ui)",
+															overflow: "hidden",
+															textOverflow: "ellipsis",
+															whiteSpace: "nowrap",
+															minWidth: 0,
+														}}
+													>
+														{sub.caption}
+													</div>
 												</div>
 											) : null}
 										</div>
