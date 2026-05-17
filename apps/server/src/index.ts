@@ -1,5 +1,6 @@
 import { cors } from "@elysiajs/cors";
 import { createContext } from "@my-better-t-app/api/context";
+import { extensionRouter } from "@my-better-t-app/api/routers/extension";
 import { appRouter } from "@my-better-t-app/api/routers/index";
 import {
 	ackOverlayGif,
@@ -15,6 +16,7 @@ import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
 import { Elysia, t } from "elysia";
 
 new Elysia()
+	.use(extensionRouter)
 	.use(
 		cors({
 			origin: env.CORS_ORIGIN,

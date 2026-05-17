@@ -12,11 +12,16 @@ import {
 import { ensureStreamerEventSubSubscriptions } from "./twitch-eventsub";
 
 export const TWITCH_REDEMPTIONS_SCOPE = "channel:manage:redemptions";
+export const TWITCH_BITS_SCOPE = "bits:read";
 
 export function hasRedemptionsScope(scope: string | null) {
 	return Boolean(
 		scope?.split(/[\s,]+/).includes(TWITCH_REDEMPTIONS_SCOPE),
 	);
+}
+
+export function hasBitsScope(scope: string | null) {
+	return Boolean(scope?.split(/[\s,]+/).includes(TWITCH_BITS_SCOPE));
 }
 
 async function syncRewardForSide(input: {
@@ -80,15 +85,30 @@ export async function syncStreamerPricing(input: {
 	let uploadChannelPointsRewardId = input.uploadChannelPointsRewardId;
 	let soundChannelPointsRewardId = input.soundChannelPointsRewardId;
 
-	if (needsChannelPoints) {
+	const needsTwitchAccount = needsChannelPoints || needsBits;
+	let twitchAccessToken: string | null = null;
+	let twitchScope: string | null = null;
+
+	if (needsTwitchAccount) {
 		const twitchAccount = await getTwitchAccountForUser(input.userId);
-		if (!twitchAccount?.accessToken) {
+		twitchAccessToken = twitchAccount?.accessToken ?? null;
+		twitchScope = twitchAccount?.scope ?? null;
+		if (!twitchAccessToken) {
 			throw new TRPCError({
 				code: "PRECONDITION_FAILED",
-				message: "Reconnect Twitch to manage channel point rewards.",
+				message: "Reconnect Twitch to manage paid submissions.",
 			});
 		}
-		if (!hasRedemptionsScope(twitchAccount.scope)) {
+	}
+
+	if (needsChannelPoints) {
+		if (!twitchAccessToken) {
+			throw new TRPCError({
+				code: "PRECONDITION_FAILED",
+				message: "Reconnect Twitch to manage paid submissions.",
+			});
+		}
+		if (!hasRedemptionsScope(twitchScope)) {
 			throw new TRPCError({
 				code: "PRECONDITION_FAILED",
 				message: "Reconnect Twitch to grant channel points management.",
@@ -97,7 +117,7 @@ export async function syncStreamerPricing(input: {
 
 		giphyChannelPointsRewardId = await syncRewardForSide({
 			broadcasterId: input.twitchChannelId,
-			accessToken: twitchAccount.accessToken,
+			accessToken: twitchAccessToken,
 			currency: input.giphyPriceCurrency,
 			amount: input.giphyPriceAmount,
 			title: "Send a GIF (GIPHY)",
@@ -105,7 +125,7 @@ export async function syncStreamerPricing(input: {
 		});
 		uploadChannelPointsRewardId = await syncRewardForSide({
 			broadcasterId: input.twitchChannelId,
-			accessToken: twitchAccount.accessToken,
+			accessToken: twitchAccessToken,
 			currency: input.uploadPriceCurrency,
 			amount: input.uploadPriceAmount,
 			title: "Send a custom image",
@@ -113,7 +133,7 @@ export async function syncStreamerPricing(input: {
 		});
 		soundChannelPointsRewardId = await syncRewardForSide({
 			broadcasterId: input.twitchChannelId,
-			accessToken: twitchAccount.accessToken,
+			accessToken: twitchAccessToken,
 			currency: input.soundPriceCurrency,
 			amount: input.soundPriceAmount,
 			title: "Send a sound",
@@ -122,7 +142,36 @@ export async function syncStreamerPricing(input: {
 	}
 
 	if (needsChannelPoints || needsBits) {
-		await ensureStreamerEventSubSubscriptions(input.twitchChannelId);
+		if (needsBits && !hasBitsScope(twitchScope)) {
+			throw new TRPCError({
+				code: "PRECONDITION_FAILED",
+				message: "Reconnect Twitch to grant bits read access for cheer notifications.",
+			});
+		}
+
+		if (!twitchAccessToken) {
+			throw new TRPCError({
+				code: "PRECONDITION_FAILED",
+				message: "Reconnect Twitch to manage paid submissions.",
+			});
+		}
+
+		try {
+			await ensureStreamerEventSubSubscriptions({
+				broadcasterId: input.twitchChannelId,
+				accessToken: twitchAccessToken,
+				channelPoints: needsChannelPoints,
+				bits: needsBits,
+			});
+		} catch (error) {
+			throw new TRPCError({
+				code: "PRECONDITION_FAILED",
+				message:
+					error instanceof Error
+						? error.message
+						: "Failed to set up Twitch EventSub notifications.",
+			});
+		}
 	}
 
 	const [profile] = await db

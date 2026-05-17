@@ -42,6 +42,7 @@ const VIEWER_ACCESS_OPTIONS: { value: ViewerAccessLevel; label: string }[] = [
 
 const TWITCH_SUBSCRIPTIONS_SCOPE = "channel:read:subscriptions";
 const TWITCH_REDEMPTIONS_SCOPE = "channel:manage:redemptions";
+const TWITCH_BITS_SCOPE = "bits:read";
 
 type PriceCurrency = "none" | "channel_points" | "bits";
 
@@ -461,6 +462,10 @@ function RouteComponent() {
 		giphyPriceCurrency === "channel_points" ||
 		uploadPriceCurrency === "channel_points" ||
 		soundPriceCurrency === "channel_points";
+	const needsBitsScopeReconnect =
+		giphyPriceCurrency === "bits" ||
+		uploadPriceCurrency === "bits" ||
+		soundPriceCurrency === "bits";
 
 	const reconnectTwitchForSubscriptions = () => {
 		authClient.signIn.social({
@@ -481,6 +486,7 @@ function RouteComponent() {
 				"user:read:moderated_channels",
 				TWITCH_SUBSCRIPTIONS_SCOPE,
 				TWITCH_REDEMPTIONS_SCOPE,
+				TWITCH_BITS_SCOPE,
 			],
 		});
 	};
@@ -1351,6 +1357,20 @@ function RouteComponent() {
 									<SettingRow
 										title="Twitch reconnect for channel points"
 										sub="Channel point rewards require the channel:manage:redemptions scope."
+									>
+										<button
+											type="button"
+											className="gf-btn sm"
+											onClick={reconnectTwitchForPricing}
+										>
+											Reconnect Twitch
+										</button>
+									</SettingRow>
+								)}
+								{needsBitsScopeReconnect && (
+									<SettingRow
+										title="Twitch reconnect for bits"
+										sub="Bits pricing requires the bits:read scope for cheer EventSub notifications."
 									>
 										<button
 											type="button"

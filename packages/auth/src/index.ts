@@ -23,6 +23,7 @@ export function createAuth() {
 					"user:read:moderated_channels",
 					"channel:read:subscriptions",
 					"channel:manage:redemptions",
+					"bits:read",
 				],
 			},
 		},

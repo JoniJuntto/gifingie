@@ -1,0 +1,58 @@
+@import "tailwindcss";
+
+:root {
+  --gf-accent:      #ff6b35;
+  --gf-accent-soft: rgba(255, 107, 53, 0.12);
+  --gf-live:        #ef4444;
+  --gf-ok:          #16a34a;
+  --gf-font-ui:     'Geist', -apple-system, 'SF Pro Display', BlinkMacSystemFont, system-ui, sans-serif;
+  --gf-font-mono:   'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  /* extension always dark (matches Twitch) */
+  --gf-bg:          #0e0e10;
+  --gf-bg-2:        #1a1a1d;
+  --gf-surface:     #18181b;
+  --gf-hl:          rgba(255,255,255,0.08);
+  --gf-hl2:         rgba(255,255,255,0.16);
+  --gf-text:        #efeff1;
+  --gf-text-2:      #adadb8;
+  --gf-muted:       #6b7280;
+  --gf-muted-2:     #4b5563;
+  --gf-on-accent:   #1a0d05;
+  --gf-t1:          rgba(255,255,255,0.05);
+  --gf-t2:          rgba(255,255,255,0.10);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body, #root {
+  height: 100%;
+  width: 100%;
+}
+
+body {
+  font-family: var(--gf-font-ui);
+  background: var(--gf-bg);
+  color: var(--gf-text);
+  -webkit-font-smoothing: antialiased;
+  font-size: 14px;
+  letter-spacing: -0.01em;
+  overflow-x: hidden;
+}
+
+input {
+  outline: none;
+}
+
+button {
+  cursor: pointer;
+  font-family: inherit;
+}
+
+img {
+  display: block;
+}

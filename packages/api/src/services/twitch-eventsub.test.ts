@@ -26,10 +26,6 @@ vi.mock("@my-better-t-app/db", () => ({
 	},
 }));
 
-vi.mock("./twitch", () => ({
-	getAppAccessToken: vi.fn(async () => "app-token"),
-}));
-
 vi.mock("./submission-payment", () => ({
 	insertPaymentCredit: vi.fn(async () => null),
 }));

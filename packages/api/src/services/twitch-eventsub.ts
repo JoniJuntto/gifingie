@@ -5,25 +5,22 @@ import { streamerProfiles } from "@my-better-t-app/db/schema/domain";
 import { env } from "@my-better-t-app/env/server";
 import { eq, or } from "drizzle-orm";
 
-import { getAppAccessToken } from "./twitch";
 import { insertPaymentCredit } from "./submission-payment";
-
-const registeredBroadcasters = new Set<string>();
 
 function eventsubCallbackUrl() {
 	return new URL("/api/twitch/eventsub", env.BETTER_AUTH_URL).toString();
 }
 
 async function createEventSubSubscription(input: {
+	accessToken: string;
 	type: string;
 	version: string;
 	condition: Record<string, string>;
 }) {
-	const appToken = await getAppAccessToken();
 	const response = await fetch("https://api.twitch.tv/helix/eventsub/subscriptions", {
 		method: "POST",
 		headers: {
-			Authorization: `Bearer ${appToken}`,
+			Authorization: `Bearer ${input.accessToken}`,
 			"Client-Id": env.TWITCH_CLIENT_ID,
 			"Content-Type": "application/json",
 		},
@@ -47,27 +44,37 @@ async function createEventSubSubscription(input: {
 	}
 }
 
-export async function ensureStreamerEventSubSubscriptions(
-	broadcasterId: string,
-) {
-	if (registeredBroadcasters.has(broadcasterId)) {
-		return;
+export async function ensureStreamerEventSubSubscriptions(input: {
+	broadcasterId: string;
+	accessToken: string;
+	channelPoints: boolean;
+	bits: boolean;
+}) {
+	const subscriptions = [];
+
+	if (input.channelPoints) {
+		subscriptions.push(
+			createEventSubSubscription({
+				accessToken: input.accessToken,
+				type: "channel.channel_points_custom_reward_redemption.add",
+				version: "1",
+				condition: { broadcaster_user_id: input.broadcasterId },
+			}),
+		);
 	}
 
-	await Promise.all([
-		createEventSubSubscription({
-			type: "channel.channel_points_custom_reward_redemption.add",
-			version: "1",
-			condition: { broadcaster_user_id: broadcasterId },
-		}),
-		createEventSubSubscription({
-			type: "channel.cheer",
-			version: "1",
-			condition: { broadcaster_user_id: broadcasterId },
-		}),
-	]);
+	if (input.bits) {
+		subscriptions.push(
+			createEventSubSubscription({
+				accessToken: input.accessToken,
+				type: "channel.cheer",
+				version: "1",
+				condition: { broadcaster_user_id: input.broadcasterId },
+			}),
+		);
+	}
 
-	registeredBroadcasters.add(broadcasterId);
+	await Promise.all(subscriptions);
 }
 
 export function verifyEventSubSignature(input: {

@@ -133,9 +133,11 @@ export const gifSubmissions = pgTable(
 		streamerProfileId: uuid("streamer_profile_id")
 			.notNull()
 			.references(() => streamerProfiles.id, { onDelete: "cascade" }),
-		viewerUserId: text("viewer_user_id")
-			.notNull()
-			.references(() => user.id, { onDelete: "cascade" }),
+		viewerUserId: text("viewer_user_id").references(() => user.id, {
+			onDelete: "set null",
+		}),
+		viewerTwitchId: text("viewer_twitch_id"),
+		extensionTransactionId: text("extension_transaction_id"),
 		source: submissionSourceEnum("source").default("giphy").notNull(),
 		moderationStatus: moderationStatusEnum("moderation_status")
 			.default("approved")
@@ -164,6 +166,11 @@ export const gifSubmissions = pgTable(
 			table.viewerUserId,
 			table.createdAt,
 		),
+		index("gif_submissions_twitch_rate_idx").on(
+			table.streamerProfileId,
+			table.viewerTwitchId,
+			table.createdAt,
+		),
 		index("gif_submissions_duplicate_idx").on(
 			table.streamerProfileId,
 			table.giphyId,
@@ -177,6 +184,9 @@ export const gifSubmissions = pgTable(
 			table.streamerProfileId,
 			table.moderationStatus,
 			table.uploadedAt,
+		),
+		uniqueIndex("gif_submissions_extension_tx_idx").on(
+			table.extensionTransactionId,
 		),
 	],
 );
