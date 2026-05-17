@@ -132,8 +132,15 @@ export function SearchView({ token, channel, onBitsSubmit }: Props) {
 				</button>
 				<img
 					src={selected.previewUrl ?? selected.gifUrl}
-					alt={selected.title}
-					style={{ width: "100%", borderRadius: 6, maxHeight: 160, objectFit: "cover" }}
+					alt=""
+					style={{
+						width: "100%",
+						height: "auto",
+						borderRadius: 6,
+						maxHeight: 180,
+						objectFit: "contain",
+						background: "var(--gf-bg-2)",
+					}}
 				/>
 				<div style={{ fontSize: 13, color: "var(--gf-text-2)", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
 					{selected.title}
@@ -166,8 +173,8 @@ export function SearchView({ token, channel, onBitsSubmit }: Props) {
 	}
 
 	return (
-		<div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-			<div style={{ padding: "12px 16px" }}>
+		<div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
+			<div style={{ padding: "12px 16px", flexShrink: 0 }}>
 				<input
 					type="text"
 					placeholder="Search GIPHY…"
@@ -178,54 +185,38 @@ export function SearchView({ token, channel, onBitsSubmit }: Props) {
 				/>
 			</div>
 
-			{loading && (
-				<StatusMessage>Searching…</StatusMessage>
-			)}
+			<div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
+				{loading && <StatusMessage>Searching…</StatusMessage>}
 
-			{!loading && query && gifs.length === 0 && (
-				<StatusMessage>No GIFs found for "{query}"</StatusMessage>
-			)}
+				{!loading && query && gifs.length === 0 && (
+					<StatusMessage>No GIFs found for "{query}"</StatusMessage>
+				)}
 
-			{!loading && !query && (
-				<StatusMessage>Type to search GIPHY</StatusMessage>
-			)}
+				{!loading && !query && (
+					<StatusMessage>Type to search GIPHY</StatusMessage>
+				)}
 
-			{!loading && gifs.length > 0 && (
-				<div
-					style={{
-						display: "grid",
-						gridTemplateColumns: "repeat(2, 1fr)",
-						gap: 4,
-						padding: "0 16px 16px",
-						overflowY: "auto",
-						flex: 1,
-					}}
-				>
-					{gifs.map((gif) => (
-						<button
-							key={gif.id}
-							type="button"
-							onClick={() => setSelected(gif)}
-							style={{
-								background: "var(--gf-bg-2)",
-								border: "1px solid var(--gf-hl)",
-								borderRadius: 6,
-								overflow: "hidden",
-								padding: 0,
-								cursor: "pointer",
-								aspectRatio: "1",
-							}}
-						>
-							<img
-								src={gif.previewUrl ?? gif.gifUrl}
-								alt={gif.title}
-								loading="lazy"
-								style={{ width: "100%", height: "100%", objectFit: "cover" }}
-							/>
-						</button>
-					))}
-				</div>
-			)}
+				{!loading && gifs.length > 0 && (
+					<div className="gf-gif-grid" style={{ padding: "0 12px 12px" }}>
+						{gifs.map((gif) => (
+							<button
+								key={gif.id}
+								type="button"
+								className="gf-gif-cell"
+								aria-label={gif.title}
+								onClick={() => setSelected(gif)}
+							>
+								<img
+									src={gif.previewUrl ?? gif.gifUrl}
+									alt=""
+									loading="lazy"
+									decoding="async"
+								/>
+							</button>
+						))}
+					</div>
+				)}
+			</div>
 		</div>
 	);
 }

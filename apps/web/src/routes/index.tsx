@@ -1,8 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { ArrowRightIcon, EyeIcon, MonitorIcon } from "lucide-react";
 import { useEffect } from "react";
 
+import LandingPage from "@/components/landing-page";
 import { authClient } from "@/lib/auth-client";
 import { trpc } from "@/utils/trpc";
 
@@ -31,7 +31,7 @@ function HomeComponent() {
 		});
 	}, [me.data, navigate, session]);
 
-	if (isPending || me.isLoading) {
+	if (isPending || (session && me.isLoading)) {
 		return (
 			<div
 				className="gf-page"
@@ -39,6 +39,7 @@ function HomeComponent() {
 					display: "flex",
 					alignItems: "center",
 					justifyContent: "center",
+					flex: 1,
 				}}
 			>
 				<span
@@ -55,57 +56,9 @@ function HomeComponent() {
 		);
 	}
 
-	return (
-		<div
-			className="gf-page"
-			style={{
-				display: "flex",
-				alignItems: "center",
-				justifyContent: "center",
-			}}
-		>
-			<div style={{ maxWidth: 540 }}>
-				<h1
-					className="gf-display"
-					style={{ fontSize: 64, color: "var(--gf-text)", marginBottom: 20 }}
-				>
-					Send a GIF.
-					<br />
-					<span style={{ color: "var(--gf-accent)" }}>Land it on stream.</span>
-				</h1>
-				<p
-					style={{
-						fontSize: 16,
-						color: "var(--gf-muted)",
-						lineHeight: 1.55,
-						marginBottom: 40,
-						fontFamily: "var(--gf-font-ui)",
-					}}
-				>
-					Sign in with Twitch to send GIFs to enrolled streamers, or enroll
-					your own channel and add a browser source to OBS.
-				</p>
+	if (session) {
+		return null;
+	}
 
-				<div style={{ display: "flex", gap: 16 }}>
-					<button
-						type="button"
-						className="gf-btn primary lg"
-						onClick={() => navigate({ to: "/login" })}
-					>
-						<EyeIcon size={15} />
-						Get started
-						<ArrowRightIcon size={15} />
-					</button>
-					<button
-						type="button"
-						className="gf-btn outline lg"
-						onClick={() => navigate({ to: "/login" })}
-					>
-						<MonitorIcon size={15} />
-						Enroll as streamer
-					</button>
-				</div>
-			</div>
-		</div>
-	);
+	return <LandingPage />;
 }

@@ -6,6 +6,7 @@
 	"scripts": {
 		"dev": "vite",
 		"build": "vite build",
+		"zip": "bun run build && cp panel.html dist/panel.html && rm -f ../../extension.zip && cd dist && zip -j ../../extension.zip panel.html panel.js panel.css",
 		"preview": "vite preview"
 	},
 	"dependencies": {

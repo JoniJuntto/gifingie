@@ -138,7 +138,7 @@ export function App() {
 				))}
 			</div>
 
-			<div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+			<div style={{ flex: 1, minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
 				{tab === "search" && (
 					<SearchView
 						token={token}

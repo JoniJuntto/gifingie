@@ -37,6 +37,12 @@ const NAV_LINKS = [
 	{ to: "/settings", label: "Settings" },
 ] as const;
 
+const MARKETING_LINKS = [
+	{ href: "/#features", label: "Features" },
+	{ href: "/#how-it-works", label: "How it works" },
+	{ href: "/#faq", label: "FAQ" },
+] as const;
+
 export default function Header() {
 	const location = useLocation();
 	const navigate = useNavigate();
@@ -60,6 +66,8 @@ export default function Header() {
 	)?.to;
 
 	const toggleTheme = () => setTheme(theme === "dark" ? "light" : "dark");
+	const isLanding = location.pathname === "/";
+	const showMarketingNav = isLanding && !session;
 
 	return (
 		<nav className="gf-nav">
@@ -73,6 +81,7 @@ export default function Header() {
 					textDecoration: "none",
 				}}
 			>
+				<span className="gf-mark">g</span>
 				<span
 					style={{
 						fontSize: 17,
@@ -84,10 +93,33 @@ export default function Header() {
 				>
 					gifingie
 				</span>
+				{showMarketingNav ? (
+					<span
+						style={{
+							fontSize: 12,
+							color: "var(--gf-muted)",
+							fontWeight: 400,
+							marginLeft: 4,
+						}}
+					>
+						· Twitch extension
+					</span>
+				) : null}
 			</Link>
 
 			{/* Nav links */}
-			{session ? (
+			{showMarketingNav ? (
+				<div style={{ display: "flex", gap: 24 }}>
+					{MARKETING_LINKS.map(({ href, label }) => (
+						<a key={href} href={href} className="gf-nav-link">
+							{label}
+						</a>
+					))}
+					<Link to="/login" className="gf-nav-link">
+						Dashboard
+					</Link>
+				</div>
+			) : session ? (
 				<div style={{ display: "flex", gap: 24 }}>
 					{navLinks.map(({ to, label }) => (
 						<Link
@@ -152,6 +184,10 @@ export default function Header() {
 							Sign out
 						</button>
 					</div>
+				) : showMarketingNav ? (
+					<Link to="/login" className="gf-btn sm accent">
+						Get started
+					</Link>
 				) : (
 					<Link to="/login" className="gf-btn sm outline">
 						Sign in

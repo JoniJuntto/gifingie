@@ -22,7 +22,10 @@ type GiphyResult = {
 		original?: GiphyImage;
 		fixed_height?: GiphyImage;
 		fixed_width?: GiphyImage;
+		fixed_height_still?: GiphyImage;
+		fixed_width_still?: GiphyImage;
 		downsized_medium?: GiphyImage;
+		downsized_still?: GiphyImage;
 		preview_gif?: GiphyImage;
 	};
 };
@@ -45,12 +48,19 @@ function normalizeGiphyResult(result: GiphyResult): NormalizedGiphyGif | null {
 		return null;
 	}
 
+	const previewUrl =
+		result.images?.fixed_width_still?.url ??
+		result.images?.fixed_height_still?.url ??
+		result.images?.downsized_still?.url ??
+		result.images?.fixed_width?.url ??
+		result.images?.fixed_height?.url ??
+		result.images?.preview_gif?.url;
+
 	return {
 		id: result.id,
 		title: result.title?.trim() || "Untitled GIF",
 		gifUrl,
-		previewUrl:
-			result.images?.fixed_height?.url ?? result.images?.preview_gif?.url,
+		previewUrl,
 	};
 }
 

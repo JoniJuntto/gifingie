@@ -23,10 +23,11 @@ export const Route = createRootRouteWithContext<RouterAppContext>()({
 	component: RootComponent,
 	head: () => ({
 		meta: [
-			{ title: "gifingie" },
+			{ title: "gifingie — Live GIF reactions for Twitch" },
 			{
 				name: "description",
-				content: "Send GIFs to live streams.",
+				content:
+					"Twitch extension and overlay for real-time GIF reactions. GIPHY search, Bits pricing, OBS browser source.",
 			},
 		],
 		links: [
@@ -60,7 +61,9 @@ function RootComponent() {
 			>
 				<div className="grid h-svh grid-rows-[auto_1fr]">
 					{isOverlay ? null : <Header />}
-					<Outlet />
+					<div className="flex min-h-0 flex-col overflow-hidden">
+						<Outlet />
+					</div>
 				</div>
 				<Toaster richColors />
 			</ThemeProvider>
