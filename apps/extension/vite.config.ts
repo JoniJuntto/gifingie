@@ -9,9 +9,13 @@ export default defineConfig({
 	},
 	build: {
 		outDir: "dist",
+		cssCodeSplit: false,
 		rollupOptions: {
-			input: {
-				panel: "index.html",
+			input: "src/main.tsx",
+			output: {
+				format: "iife",
+				entryFileNames: "panel.js",
+				assetFileNames: "panel[extname]",
 			},
 		},
 	},

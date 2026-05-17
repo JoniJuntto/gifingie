@@ -61,17 +61,12 @@ export const extensionRouter = new Elysia({ prefix: "/api/extension" })
 			set.headers as Record<string, string>,
 		);
 	})
-	.options(
-		"/*",
-		({ request, set }) => {
-			addExtensionCorsHeaders(
-				request.headers.get("origin"),
-				set.headers as Record<string, string>,
-			);
-			set.status = 204;
-			return "";
-		},
-	)
+	.options("/*", ({ request }) => {
+		const origin = request.headers.get("origin");
+		const headers: Record<string, string> = {};
+		addExtensionCorsHeaders(origin, headers);
+		return new Response(null, { status: 204, headers });
+	})
 	.get("/channel", async ({ request, status }) => {
 		const ctx = await extractExtensionContext(request);
 		if (!ctx) return status(401, { error: "Unauthorized" });
