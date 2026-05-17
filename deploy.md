@@ -3,7 +3,7 @@
 This app is a Bun/Turborepo monorepo:
 
 - `apps/web`: React/Vite frontend, built into static files.
-- `apps/server`: Bun/Elysia backend, listening on `localhost:3000`.
+- `apps/server`: Bun/Elysia backend, listening on `localhost` at `PORT` (default `3003`).
 - `packages/db`: Drizzle migrations for PostgreSQL.
 
 The deployment shape below keeps nginx in front, serves the built frontend directly, and proxies API traffic to the Bun server.
@@ -117,6 +117,7 @@ Use this template:
 
 ```env
 NODE_ENV=production
+PORT=3003
 
 DATABASE_HOST=your-postgres-host
 DATABASE_PORT=5432
@@ -200,17 +201,57 @@ If this is the first deployment and migrations fail because the database is empt
 
 ## 10. Check the backend port
 
-The backend currently listens on port `3000`.
+The backend listens on `PORT` from `.env` (default `3003`).
 
 Check whether another project is already using it:
 
 ```bash
-sudo ss -tulpn | grep ':3000'
+sudo ss -tulpn | grep ':3003'
 ```
 
-If port `3000` is already taken, either move the other project or update this app to read a `PORT` environment variable before deploying. nginx can proxy to any port, but this code currently has `3000` hardcoded in `apps/server/src/index.ts`.
+If port `3003` is already taken (for example by another Docker container), pick a free port and set it in `.env`:
+
+```env
+PORT=3001
+```
+
+Use the same port in nginx `proxy_pass` (section 12). Rebuild and restart after changing `PORT`:
+
+```bash
+bun run build
+sudo systemctl restart gifingie
+```
 
 ## 11. Create a systemd service
+
+Set your repo root (where `turbo.json` lives). Examples: `/var/www/gifingie/app` or `/opt/gifingie`.
+
+```bash
+APP_ROOT=/opt/gifingie   # change if your clone lives elsewhere
+```
+
+Ensure Bun is on a fixed path for systemd (install step 2). As root:
+
+```bash
+sudo ln -sf "$(which bun)" /usr/local/bin/bun
+ls -la /usr/local/bin/bun
+```
+
+Confirm the server bundle exists:
+
+```bash
+ls -la "$APP_ROOT/apps/server/dist/index.mjs"
+```
+
+Test the server manually before systemd:
+
+```bash
+cd "$APP_ROOT"
+set -a && source .env && set +a
+/usr/local/bin/bun apps/server/dist/index.mjs
+```
+
+You should see `Server is running on http://localhost:…` and `curl` to that `PORT` should return `OK`. Stop with Ctrl+C.
 
 Create the service file:
 
@@ -218,7 +259,7 @@ Create the service file:
 sudo nano /etc/systemd/system/gifingie.service
 ```
 
-Paste:
+Paste (replace `APP_ROOT` and `YOUR_SSH_USER`):
 
 ```ini
 [Unit]
@@ -227,19 +268,19 @@ After=network.target
 
 [Service]
 Type=simple
-WorkingDirectory=/var/www/gifingie/app
-EnvironmentFile=/var/www/gifingie/app/.env
-ExecStart=/usr/local/bin/bun run apps/server/dist/index.mjs
+WorkingDirectory=/opt/gifingie
+EnvironmentFile=/opt/gifingie/.env
+ExecStart=/root/.bun/bin/bun apps/server/dist/index.mjs
 Restart=always
 RestartSec=5
-User=YOUR_SSH_USER
-Group=YOUR_SSH_USER
+User=root
+Group=root
 
 [Install]
 WantedBy=multi-user.target
 ```
 
-Replace `YOUR_SSH_USER` with the user printed by `whoami`.
+`WorkingDirectory` must be the monorepo root (contains `turbo.json`). `EnvironmentFile` must point at your production `.env`. Do not use `bun run` in `ExecStart` — run the built `index.mjs` directly.
 
 Enable and start the service:
 
@@ -259,8 +300,10 @@ sudo journalctl -u gifingie -f
 Quick local backend check:
 
 ```bash
-curl http://127.0.0.1:3000/
+curl http://127.0.0.1:${PORT:-3003}/
 ```
+
+Use the value of `PORT` from `.env` if you changed it (for example `3001`).
 
 Expected response:
 
@@ -290,7 +333,7 @@ server {
     client_max_body_size 12m;
 
     location /api/ {
-        proxy_pass http://127.0.0.1:3000;
+        proxy_pass http://127.0.0.1:3003;  # must match PORT in .env
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -299,7 +342,7 @@ server {
     }
 
     location /trpc/ {
-        proxy_pass http://127.0.0.1:3000;
+        proxy_pass http://127.0.0.1:3003;  # must match PORT in .env
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -398,6 +441,28 @@ sudo journalctl -u gifingie -f
 
 ## Troubleshooting
 
+### systemd shows `status=203/EXEC`
+
+systemd could not execute `ExecStart`. Usually Bun is missing at `/usr/local/bin/bun`, or `WorkingDirectory` / the bundle path is wrong.
+
+```bash
+which bun
+ls -la /usr/local/bin/bun
+ls -la /opt/gifingie/apps/server/dist/index.mjs   # adjust APP_ROOT
+grep -E '^(WorkingDirectory|ExecStart|EnvironmentFile)=' /etc/systemd/system/gifingie.service
+```
+
+Fix:
+
+```bash
+sudo ln -sf "$(which bun)" /usr/local/bin/bun
+cd /opt/gifingie && bun run build
+sudo systemctl daemon-reload
+sudo systemctl restart gifingie
+```
+
+If Bun is only under `/root/.bun/bin/bun`, either symlink it to `/usr/local/bin/bun` or put that full path in `ExecStart`.
+
 ### nginx returns 502
 
 Check that the Bun service is running:
@@ -407,10 +472,11 @@ sudo systemctl status gifingie
 sudo journalctl -u gifingie -n 100
 ```
 
-Check that port `3000` is listening:
+Check that the backend port from `.env` is listening (default `3003`):
 
 ```bash
-sudo ss -tulpn | grep ':3000'
+grep '^PORT=' /var/www/gifingie/app/.env
+sudo ss -tulpn | grep ':3003'   # or :3001, etc.
 ```
 
 ### Frontend loads but login/API calls fail

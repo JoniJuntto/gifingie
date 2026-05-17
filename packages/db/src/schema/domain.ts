@@ -55,6 +55,9 @@ export const streamerProfiles = pgTable(
 		moderateGiphySubmissions: boolean("moderate_giphy_submissions")
 			.default(false)
 			.notNull(),
+		allowCustomUploads: boolean("allow_custom_uploads")
+			.default(false)
+			.notNull(),
 		liveCheckedAt: timestamp("live_checked_at"),
 		isLive: boolean("is_live").default(false).notNull(),
 		liveStreamTitle: text("live_stream_title"),

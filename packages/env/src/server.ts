@@ -22,6 +22,7 @@ export const env = createEnv({
 		S3_SECRET_ACCESS_KEY: z.string().min(1).optional(),
 		S3_UPLOAD_URL_TTL_SECONDS: z.coerce.number().int().positive().default(300),
 		S3_DISPLAY_URL_TTL_SECONDS: z.coerce.number().int().positive().default(300),
+		PORT: z.coerce.number().int().positive().default(3000),
 		NODE_ENV: z
 			.enum(["development", "production", "test"])
 			.default("development"),

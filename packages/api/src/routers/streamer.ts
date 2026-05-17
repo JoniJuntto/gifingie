@@ -178,6 +178,7 @@ export const streamerRouter = router({
 		.input(
 			z.object({
 				moderateGiphySubmissions: z.boolean(),
+				allowCustomUploads: z.boolean(),
 			}),
 		)
 		.mutation(async ({ ctx, input }) => {
@@ -185,6 +186,7 @@ export const streamerRouter = router({
 				.update(streamerProfiles)
 				.set({
 					moderateGiphySubmissions: input.moderateGiphySubmissions,
+					allowCustomUploads: input.allowCustomUploads,
 					updatedAt: new Date(),
 				})
 				.where(eq(streamerProfiles.userId, ctx.session.user.id))

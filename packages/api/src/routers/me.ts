@@ -40,6 +40,7 @@ export const meRouter = router({
 						gifDisplaySeconds: streamerProfile.gifDisplaySeconds,
 						shareVisitCount: streamerProfile.shareVisitCount,
 						moderateGiphySubmissions: streamerProfile.moderateGiphySubmissions,
+						allowCustomUploads: streamerProfile.allowCustomUploads,
 					}
 				: null,
 		};

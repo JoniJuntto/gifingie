@@ -1,4 +1,6 @@
+CREATE TYPE "public"."moderation_status" AS ENUM('pending', 'approved', 'rejected');--> statement-breakpoint
 CREATE TYPE "public"."selected_role" AS ENUM('streamer', 'viewer');--> statement-breakpoint
+CREATE TYPE "public"."submission_source" AS ENUM('giphy', 'upload');--> statement-breakpoint
 CREATE TABLE "account" (
 	"id" text PRIMARY KEY NOT NULL,
 	"account_id" text NOT NULL,
@@ -33,6 +35,7 @@ CREATE TABLE "user" (
 	"email" text NOT NULL,
 	"email_verified" boolean DEFAULT false NOT NULL,
 	"image" text,
+	"is_anonymous" boolean DEFAULT false NOT NULL,
 	"created_at" timestamp DEFAULT now() NOT NULL,
 	"updated_at" timestamp DEFAULT now() NOT NULL,
 	CONSTRAINT "user_email_unique" UNIQUE("email")
@@ -51,10 +54,18 @@ CREATE TABLE "gif_submissions" (
 	"id" bigserial PRIMARY KEY NOT NULL,
 	"streamer_profile_id" uuid NOT NULL,
 	"viewer_user_id" text NOT NULL,
-	"giphy_id" text NOT NULL,
-	"gif_url" text NOT NULL,
+	"source" "submission_source" DEFAULT 'giphy' NOT NULL,
+	"moderation_status" "moderation_status" DEFAULT 'approved' NOT NULL,
+	"giphy_id" text,
+	"gif_url" text,
 	"preview_url" text,
 	"title" text NOT NULL,
+	"caption" text,
+	"s3_key" text,
+	"content_type" text,
+	"byte_size" integer,
+	"original_filename" text,
+	"uploaded_at" timestamp,
 	"displayed_at" timestamp,
 	"created_at" timestamp DEFAULT now() NOT NULL
 );
@@ -68,8 +79,14 @@ CREATE TABLE "streamer_profiles" (
 	"twitch_avatar_url" text,
 	"is_enrolled" boolean DEFAULT true NOT NULL,
 	"overlay_token" text NOT NULL,
+	"gif_display_seconds" integer DEFAULT 10 NOT NULL,
+	"share_visit_count" integer DEFAULT 0 NOT NULL,
+	"moderate_giphy_submissions" boolean DEFAULT false NOT NULL,
+	"allow_custom_uploads" boolean DEFAULT false NOT NULL,
 	"live_checked_at" timestamp,
 	"is_live" boolean DEFAULT false NOT NULL,
+	"live_stream_title" text,
+	"live_stream_thumbnail_url" text,
 	"created_at" timestamp DEFAULT now() NOT NULL,
 	"updated_at" timestamp DEFAULT now() NOT NULL
 );
@@ -94,6 +111,7 @@ CREATE INDEX "gif_submissions_streamer_poll_idx" ON "gif_submissions" USING btre
 CREATE INDEX "gif_submissions_viewer_rate_idx" ON "gif_submissions" USING btree ("streamer_profile_id","viewer_user_id","created_at");--> statement-breakpoint
 CREATE INDEX "gif_submissions_duplicate_idx" ON "gif_submissions" USING btree ("streamer_profile_id","giphy_id","created_at");--> statement-breakpoint
 CREATE INDEX "gif_submissions_displayed_idx" ON "gif_submissions" USING btree ("streamer_profile_id","displayed_at");--> statement-breakpoint
+CREATE INDEX "gif_submissions_moderation_idx" ON "gif_submissions" USING btree ("streamer_profile_id","moderation_status","uploaded_at");--> statement-breakpoint
 CREATE UNIQUE INDEX "streamer_profiles_user_id_idx" ON "streamer_profiles" USING btree ("user_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "streamer_profiles_overlay_token_idx" ON "streamer_profiles" USING btree ("overlay_token");--> statement-breakpoint
 CREATE INDEX "streamer_profiles_twitch_channel_id_idx" ON "streamer_profiles" USING btree ("twitch_channel_id");

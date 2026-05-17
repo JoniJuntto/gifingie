@@ -58,6 +58,7 @@ function toPublicStreamer(profile: typeof streamerProfiles.$inferSelect) {
 		twitchDisplayName: profile.twitchDisplayName,
 		twitchAvatarUrl: profile.twitchAvatarUrl,
 		moderateGiphySubmissions: profile.moderateGiphySubmissions,
+		allowCustomUploads: profile.allowCustomUploads,
 		isLive:
 			profile.isLive || isForcedLiveTwitchLogin(profile.twitchChannelLogin),
 		streamTitle: profile.liveStreamTitle,
