@@ -218,44 +218,103 @@ function helixUserHeaders(accessToken: string) {
 	};
 }
 
-export async function upsertChannelPointsReward(input: {
+export class TwitchChannelPointsError extends Error {
+	readonly httpStatus: number;
+
+	constructor(httpStatus: number, message: string) {
+		super(message);
+		this.name = "TwitchChannelPointsError";
+		this.httpStatus = httpStatus;
+	}
+}
+
+async function readTwitchHelixError(response: Response) {
+	try {
+		const body = (await response.json()) as {
+			message?: string;
+			error?: string;
+		};
+		return body.message ?? body.error ?? response.statusText;
+	} catch {
+		return response.statusText;
+	}
+}
+
+function channelPointsRewardsUrl(broadcasterId: string) {
+	const url = new URL(
+		"https://api.twitch.tv/helix/channel_points/custom_rewards",
+	);
+	url.searchParams.set("broadcaster_id", broadcasterId);
+	return url;
+}
+
+export async function listChannelPointsRewards(input: {
+	broadcasterId: string;
+	accessToken: string;
+}) {
+	const url = channelPointsRewardsUrl(input.broadcasterId);
+	url.searchParams.set("only_manageable_rewards", "true");
+	url.searchParams.set("first", "50");
+
+	const response = await fetch(url, {
+		headers: helixUserHeaders(input.accessToken),
+	});
+
+	if (!response.ok) {
+		const detail = await readTwitchHelixError(response);
+		throw new TwitchChannelPointsError(
+			response.status,
+			`Could not list channel points rewards: ${detail}`,
+		);
+	}
+
+	const body = (await response.json()) as {
+		data: { id: string; title: string }[];
+	};
+	return body.data;
+}
+
+async function updateChannelPointsReward(input: {
+	broadcasterId: string;
+	accessToken: string;
+	rewardId: string;
+	title: string;
+	cost: number;
+}) {
+	const url = channelPointsRewardsUrl(input.broadcasterId);
+	url.searchParams.set("id", input.rewardId);
+
+	const response = await fetch(url, {
+		method: "PATCH",
+		headers: helixUserHeaders(input.accessToken),
+		body: JSON.stringify({
+			title: input.title,
+			cost: input.cost,
+			is_enabled: true,
+		}),
+	});
+
+	if (!response.ok) {
+		const detail = await readTwitchHelixError(response);
+		throw new TwitchChannelPointsError(
+			response.status,
+			`Could not update channel points reward: ${detail}`,
+		);
+	}
+
+	const body = (await response.json()) as {
+		data: { id: string }[];
+	};
+	return body.data[0]?.id ?? input.rewardId;
+}
+
+async function createChannelPointsReward(input: {
 	broadcasterId: string;
 	accessToken: string;
 	title: string;
 	cost: number;
-	existingRewardId?: string | null;
 }) {
-	if (input.existingRewardId) {
-		const url = new URL(
-			"https://api.twitch.tv/helix/channel_points/custom_rewards",
-		);
-		url.searchParams.set("broadcaster_id", input.broadcasterId);
-		url.searchParams.set("id", input.existingRewardId);
-
-		const response = await fetch(url, {
-			method: "PATCH",
-			headers: helixUserHeaders(input.accessToken),
-			body: JSON.stringify({
-				title: input.title,
-				cost: input.cost,
-				is_enabled: true,
-			}),
-		});
-
-		if (!response.ok) {
-			throw new Error(`Could not update channel points reward: ${response.status}`);
-		}
-
-		const body = (await response.json()) as {
-			data: { id: string }[];
-		};
-		return body.data[0]?.id ?? input.existingRewardId;
-	}
-
-	const url = new URL(
-		"https://api.twitch.tv/helix/channel_points/custom_rewards",
-	);
-	url.searchParams.set("broadcaster_id", input.broadcasterId);
+	const url = channelPointsRewardsUrl(input.broadcasterId);
 
 	const response = await fetch(url, {
 		method: "POST",
@@ -268,7 +327,11 @@ export async function upsertChannelPointsReward(input: {
 	});
 
 	if (!response.ok) {
-		throw new Error(`Could not create channel points reward: ${response.status}`);
+		const detail = await readTwitchHelixError(response);
+		throw new TwitchChannelPointsError(
+			response.status,
+			`Could not create channel points reward: ${detail}`,
+		);
 	}
 
 	const body = (await response.json()) as {
@@ -276,9 +339,45 @@ export async function upsertChannelPointsReward(input: {
 	};
 	const rewardId = body.data[0]?.id;
 	if (!rewardId) {
-		throw new Error("Twitch did not return a custom reward id.");
+		throw new TwitchChannelPointsError(
+			500,
+			"Twitch did not return a custom reward id.",
+		);
 	}
 	return rewardId;
+}
+
+export async function upsertChannelPointsReward(input: {
+	broadcasterId: string;
+	accessToken: string;
+	title: string;
+	cost: number;
+	existingRewardId?: string | null;
+}) {
+	const rewards = await listChannelPointsRewards({
+		broadcasterId: input.broadcasterId,
+		accessToken: input.accessToken,
+	});
+	const rewardByTitle = rewards.find((reward) => reward.title === input.title);
+	const storedRewardStillExists =
+		input.existingRewardId != null &&
+		rewards.some((reward) => reward.id === input.existingRewardId);
+
+	const rewardId = storedRewardStillExists
+		? input.existingRewardId
+		: (rewardByTitle?.id ?? null);
+
+	if (rewardId) {
+		return updateChannelPointsReward({
+			broadcasterId: input.broadcasterId,
+			accessToken: input.accessToken,
+			rewardId,
+			title: input.title,
+			cost: input.cost,
+		});
+	}
+
+	return createChannelPointsReward(input);
 }
 
 export async function fulfillChannelPointsRedemption(input: {

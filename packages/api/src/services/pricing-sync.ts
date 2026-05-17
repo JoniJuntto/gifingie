@@ -5,7 +5,10 @@ import { eq } from "drizzle-orm";
 
 import type { PriceCurrency } from "./pricing-schema";
 import { getTwitchAccountForUser } from "./submission-payment";
-import { upsertChannelPointsReward } from "./twitch";
+import {
+	TwitchChannelPointsError,
+	upsertChannelPointsReward,
+} from "./twitch";
 import { ensureStreamerEventSubSubscriptions } from "./twitch-eventsub";
 
 export const TWITCH_REDEMPTIONS_SCOPE = "channel:manage:redemptions";
@@ -28,13 +31,26 @@ async function syncRewardForSide(input: {
 		return null;
 	}
 
-	return upsertChannelPointsReward({
-		broadcasterId: input.broadcasterId,
-		accessToken: input.accessToken,
-		title: input.title,
-		cost: input.amount,
-		existingRewardId: input.existingRewardId,
-	});
+	try {
+		return await upsertChannelPointsReward({
+			broadcasterId: input.broadcasterId,
+			accessToken: input.accessToken,
+			title: input.title,
+			cost: input.amount,
+			existingRewardId: input.existingRewardId,
+		});
+	} catch (error) {
+		if (error instanceof TwitchChannelPointsError) {
+			throw new TRPCError({
+				code:
+					error.httpStatus === 401 || error.httpStatus === 403
+						? "PRECONDITION_FAILED"
+						: "BAD_REQUEST",
+				message: error.message,
+			});
+		}
+		throw error;
+	}
 }
 
 export async function syncStreamerPricing(input: {
