@@ -6,6 +6,10 @@ import {
 import { and, asc, eq, gt, gte, isNotNull, isNull, or } from "drizzle-orm";
 
 import {
+	DEFAULT_OVERLAY_GIF_HEIGHT_PERCENT,
+	DEFAULT_OVERLAY_GIF_WIDTH_PERCENT,
+	DEFAULT_OVERLAY_GIF_X_PERCENT,
+	DEFAULT_OVERLAY_GIF_Y_PERCENT,
 	OVERLAY_DISPLAY_SECONDS,
 	OVERLAY_INITIAL_WINDOW_MINUTES,
 } from "./constants";
@@ -86,6 +90,14 @@ export async function getOverlayGifs(overlayToken: string, after?: number) {
 		gifs: visibleGifs.filter((gif) => gif.gifUrl.length > 0),
 		settings: {
 			gifDisplaySeconds: profile.gifDisplaySeconds ?? OVERLAY_DISPLAY_SECONDS,
+			overlayGifXPercent:
+				profile.overlayGifXPercent ?? DEFAULT_OVERLAY_GIF_X_PERCENT,
+			overlayGifYPercent:
+				profile.overlayGifYPercent ?? DEFAULT_OVERLAY_GIF_Y_PERCENT,
+			overlayGifWidthPercent:
+				profile.overlayGifWidthPercent ?? DEFAULT_OVERLAY_GIF_WIDTH_PERCENT,
+			overlayGifHeightPercent:
+				profile.overlayGifHeightPercent ?? DEFAULT_OVERLAY_GIF_HEIGHT_PERCENT,
 		},
 	};
 }

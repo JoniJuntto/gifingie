@@ -147,22 +147,6 @@ export default function Header() {
 						Sign in
 					</Link>
 				)}
-
-				{/* streamer role indicator */}
-				{session ? (
-					<span
-						style={{
-							display: "inline-flex",
-							alignItems: "center",
-							gap: 6,
-							fontSize: 12,
-							color: "var(--gf-muted)",
-							fontFamily: "var(--gf-font-ui)",
-						}}
-					>
-						<MonitorIcon size={12} />
-					</span>
-				) : null}
 			</div>
 		</nav>
 	);

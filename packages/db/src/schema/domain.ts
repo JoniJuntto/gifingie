@@ -51,6 +51,14 @@ export const streamerProfiles = pgTable(
 		isEnrolled: boolean("is_enrolled").default(true).notNull(),
 		overlayToken: text("overlay_token").notNull(),
 		gifDisplaySeconds: integer("gif_display_seconds").default(10).notNull(),
+		overlayGifXPercent: integer("overlay_gif_x_percent").default(50).notNull(),
+		overlayGifYPercent: integer("overlay_gif_y_percent").default(78).notNull(),
+		overlayGifWidthPercent: integer("overlay_gif_width_percent")
+			.default(28)
+			.notNull(),
+		overlayGifHeightPercent: integer("overlay_gif_height_percent")
+			.default(22)
+			.notNull(),
 		shareVisitCount: integer("share_visit_count").default(0).notNull(),
 		moderateGiphySubmissions: boolean("moderate_giphy_submissions")
 			.default(false)

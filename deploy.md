@@ -87,19 +87,20 @@ These instructions use your existing SSH/deploy user to own the files and run th
 whoami
 ```
 
-Create the app directory:
+## 4. Clone the repo
+
+Pick one repo root and use it everywhere (systemd `WorkingDirectory`, `.env`, nginx `root`, and deploy commands). This guide uses:
 
 ```bash
-sudo mkdir -p /var/www/gifingie/app
-sudo chown -R "$USER":"$USER" /var/www/gifingie
+export APP_ROOT=/opt/gifingie
+sudo mkdir -p "/opt/gifingie"
+sudo chown -R "$USER":"$USER" "/opt/gifingie"
 ```
-
-## 4. Clone the repo
 
 From the VPS:
 
 ```bash
-cd /var/www/gifingie/app
+cd "/opt/gifingie"
 git clone YOUR_REPO_URL .
 ```
 
@@ -107,10 +108,10 @@ If the repo is private, set up an SSH deploy key or clone with your preferred au
 
 ## 5. Create the production environment file
 
-Create `/var/www/gifingie/app/.env`:
+Create `/opt/gifingie/.env`:
 
 ```bash
-nano /var/www/gifingie/app/.env
+nano "/opt/gifingie/.env"
 ```
 
 Use this template:
@@ -170,7 +171,7 @@ Make sure the Twitch client ID and secret in `.env` match that Twitch applicatio
 From the repo root:
 
 ```bash
-cd /var/www/gifingie/app
+cd "/opt/gifingie"
 bun install --frozen-lockfile
 ```
 
@@ -179,21 +180,21 @@ bun install --frozen-lockfile
 The frontend reads `VITE_*` values at build time, so build only after the production `.env` exists.
 
 ```bash
-cd /var/www/gifingie/app
+cd "/opt/gifingie"
 bun run build
 ```
 
 Expected build outputs:
 
-- Frontend: `/var/www/gifingie/app/apps/web/dist`
-- Backend: `/var/www/gifingie/app/apps/server/dist/index.mjs`
+- Frontend: `/opt/gifingie/apps/web/dist`
+- Backend: `/opt/gifingie/apps/server/dist/index.mjs`
 
 ## 9. Run database migrations
 
 Run the checked-in Drizzle migrations:
 
 ```bash
-cd /var/www/gifingie/app
+cd "/opt/gifingie"
 bun run db:migrate
 ```
 
@@ -240,13 +241,13 @@ ls -la /usr/local/bin/bun
 Confirm the server bundle exists:
 
 ```bash
-ls -la "$APP_ROOT/apps/server/dist/index.mjs"
+ls -la "/opt/gifingie/apps/server/dist/index.mjs"
 ```
 
 Test the server manually before systemd:
 
 ```bash
-cd "$APP_ROOT"
+cd "/opt/gifingie"
 set -a && source .env && set +a
 /usr/local/bin/bun apps/server/dist/index.mjs
 ```
@@ -327,7 +328,7 @@ server {
     listen [::]:80;
     server_name gifingie.huikaton.online;
 
-    root /var/www/gifingie/app/apps/web/dist;
+    root /opt/gifingie/apps/web/dist;  # must match APP_ROOT from section 4
     index index.html;
 
     client_max_body_size 12m;
@@ -424,7 +425,7 @@ A `200`, `204`, `401`, or auth-shaped response is fine. A `502` usually means th
 For each update:
 
 ```bash
-cd /var/www/gifingie/app
+cd /opt/gifingie
 git pull
 bun install --frozen-lockfile
 bun run build
@@ -463,6 +464,40 @@ sudo systemctl restart gifingie
 
 If Bun is only under `/root/.bun/bin/bun`, either symlink it to `/usr/local/bin/bun` or put that full path in `ExecStart`.
 
+### nginx returns 500 on `/` (but API routes work)
+
+A `500` on the homepage with `Server: nginx` in the response headers usually means nginx cannot serve the built frontend. The Bun API can still be healthy (`curl -I https://gifingie.huikaton.online/api/auth/session` may return `405` or another backend status, not `502`).
+
+Check that the static build exists and matches nginx `root`:
+
+```bash
+export APP_ROOT=/opt/gifingie   # your real repo root
+grep -E '^\s*root ' /etc/nginx/sites-enabled/gifingie.huikaton.online
+ls -la "/opt/gifingie/apps/web/dist/index.html"
+```
+
+If `index.html` is missing, rebuild:
+
+```bash
+cd "/opt/gifingie"
+bun run build
+```
+
+If the repo lives under `/opt/gifingie` but nginx still points at `/var/www/gifingie/...`, update nginx:
+
+```nginx
+root /opt/gifingie/apps/web/dist;
+```
+
+Then reload:
+
+```bash
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+After certbot, confirm the HTTPS `server` block still uses the same `root` path.
+
 ### nginx returns 502
 
 Check that the Bun service is running:
@@ -475,13 +510,13 @@ sudo journalctl -u gifingie -n 100
 Check that the backend port from `.env` is listening (default `3003`):
 
 ```bash
-grep '^PORT=' /var/www/gifingie/app/.env
+grep '^PORT=' "/opt/gifingie/.env"
 sudo ss -tulpn | grep ':3003'   # or :3001, etc.
 ```
 
 ### Frontend loads but login/API calls fail
 
-Confirm these values in `/var/www/gifingie/app/.env`:
+Confirm these values in `/opt/gifingie/.env`:
 
 ```env
 BETTER_AUTH_URL=https://gifingie.huikaton.online

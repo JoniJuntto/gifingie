@@ -9,11 +9,8 @@ import { and, count, desc, eq, isNotNull, isNull, ne, or } from "drizzle-orm";
 import { z } from "zod";
 
 import { protectedProcedure, router } from "../index";
-import {
-	MAX_OVERLAY_DISPLAY_SECONDS,
-	MIN_OVERLAY_DISPLAY_SECONDS,
-	OVERLAY_BACKLOG_LIMIT,
-} from "../services/constants";
+import { OVERLAY_BACKLOG_LIMIT } from "../services/constants";
+import { overlaySettingsInputSchema } from "../services/overlay-settings";
 import { createOverlayToken } from "../services/tokens";
 import { getTwitchUserById } from "../services/twitch";
 import { createSignedDisplayUrl } from "../services/uploads";
@@ -146,20 +143,16 @@ export const streamerRouter = router({
 		return profile;
 	}),
 	updateOverlaySettings: protectedProcedure
-		.input(
-			z.object({
-				gifDisplaySeconds: z
-					.number()
-					.int()
-					.min(MIN_OVERLAY_DISPLAY_SECONDS)
-					.max(MAX_OVERLAY_DISPLAY_SECONDS),
-			}),
-		)
+		.input(overlaySettingsInputSchema)
 		.mutation(async ({ ctx, input }) => {
 			const [profile] = await db
 				.update(streamerProfiles)
 				.set({
 					gifDisplaySeconds: input.gifDisplaySeconds,
+					overlayGifXPercent: input.overlayGifXPercent,
+					overlayGifYPercent: input.overlayGifYPercent,
+					overlayGifWidthPercent: input.overlayGifWidthPercent,
+					overlayGifHeightPercent: input.overlayGifHeightPercent,
 					updatedAt: new Date(),
 				})
 				.where(eq(streamerProfiles.userId, ctx.session.user.id))

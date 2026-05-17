@@ -15,21 +15,66 @@ type OverlayGif = {
 
 type OverlayPayload = {
 	gifs?: OverlayGif[];
-	settings?: { gifDisplaySeconds?: number };
+	settings?: {
+		gifDisplaySeconds?: number;
+		overlayGifXPercent?: number;
+		overlayGifYPercent?: number;
+		overlayGifWidthPercent?: number;
+		overlayGifHeightPercent?: number;
+	};
 };
 
 type CurrentOverlayGif = OverlayGif & { displaySeconds: number };
+type OverlayLayout = {
+	overlayGifXPercent: number;
+	overlayGifYPercent: number;
+	overlayGifWidthPercent: number;
+	overlayGifHeightPercent: number;
+};
 
 const DEFAULT_DISPLAY_SECONDS = 10;
 const MIN_DISPLAY_SECONDS = 1;
 const MAX_DISPLAY_SECONDS = 60;
+const DEFAULT_OVERLAY_LAYOUT: OverlayLayout = {
+	overlayGifXPercent: 50,
+	overlayGifYPercent: 78,
+	overlayGifWidthPercent: 28,
+	overlayGifHeightPercent: 22,
+};
 const POLL_MS = 1_500;
+
+function clamp(value: number, min: number, max: number) {
+	return Math.min(max, Math.max(min, value));
+}
+
+function clampOverlayLayout(layout: OverlayLayout): OverlayLayout {
+	const width = clamp(Math.round(layout.overlayGifWidthPercent), 5, 100);
+	const height = clamp(Math.round(layout.overlayGifHeightPercent), 5, 100);
+	const halfWidth = width / 2;
+	const halfHeight = height / 2;
+
+	return {
+		overlayGifWidthPercent: width,
+		overlayGifHeightPercent: height,
+		overlayGifXPercent: clamp(
+			Math.round(layout.overlayGifXPercent),
+			halfWidth,
+			100 - halfWidth,
+		),
+		overlayGifYPercent: clamp(
+			Math.round(layout.overlayGifYPercent),
+			halfHeight,
+			100 - halfHeight,
+		),
+	};
+}
 
 function RouteComponent() {
 	const { overlayToken } = Route.useParams();
 	const [queue, setQueue] = useState<OverlayGif[]>([]);
 	const [current, setCurrent] = useState<CurrentOverlayGif | null>(null);
 	const [displaySeconds, setDisplaySeconds] = useState(DEFAULT_DISPLAY_SECONDS);
+	const [layout, setLayout] = useState<OverlayLayout>(DEFAULT_OVERLAY_LAYOUT);
 	const [elapsed, setElapsed] = useState(0);
 	const lastSeenId = useRef<number | null>(null);
 	const seenIds = useRef(new Set<number>());
@@ -51,6 +96,7 @@ function RouteComponent() {
 			const maybeDs = Array.isArray(payload)
 				? undefined
 				: payload.settings?.gifDisplaySeconds;
+			const maybeLayout = Array.isArray(payload) ? undefined : payload.settings;
 
 			if (
 				typeof maybeDs === "number" &&
@@ -59,6 +105,22 @@ function RouteComponent() {
 				maybeDs <= MAX_DISPLAY_SECONDS
 			) {
 				setDisplaySeconds(maybeDs);
+			}
+
+			if (
+				typeof maybeLayout?.overlayGifXPercent === "number" &&
+				typeof maybeLayout.overlayGifYPercent === "number" &&
+				typeof maybeLayout.overlayGifWidthPercent === "number" &&
+				typeof maybeLayout.overlayGifHeightPercent === "number"
+			) {
+				setLayout(
+					clampOverlayLayout({
+						overlayGifXPercent: maybeLayout.overlayGifXPercent,
+						overlayGifYPercent: maybeLayout.overlayGifYPercent,
+						overlayGifWidthPercent: maybeLayout.overlayGifWidthPercent,
+						overlayGifHeightPercent: maybeLayout.overlayGifHeightPercent,
+					}),
+				);
 			}
 
 			const fresh = gifs.filter((g) => !seenIds.current.has(g.id));
@@ -111,6 +173,7 @@ function RouteComponent() {
 	}, [apiBase, current, overlayToken]);
 
 	const progress = current ? Math.min(1, elapsed / current.displaySeconds) : 0;
+	const safeLayout = clampOverlayLayout(layout);
 
 	// Show nothing when idle
 	if (!current) {
@@ -125,8 +188,6 @@ function RouteComponent() {
 		);
 	}
 
-	const upNext = queue.slice(0, 3);
-
 	return (
 		<div
 			style={{
@@ -139,156 +200,84 @@ function RouteComponent() {
 				WebkitFontSmoothing: "antialiased",
 			}}
 		>
-			{/* Bottom overlay strip */}
 			<div
 				style={{
 					position: "absolute",
-					left: 32,
-					right: 32,
-					bottom: 28,
+					left: `${safeLayout.overlayGifXPercent}%`,
+					top: `${safeLayout.overlayGifYPercent}%`,
+					width: `${safeLayout.overlayGifWidthPercent}%`,
+					height: `${safeLayout.overlayGifHeightPercent}%`,
+					transform: "translate(-50%, -50%)",
+					minWidth: 96,
+					minHeight: 72,
+					display: "flex",
+					flexDirection: "column",
+					background: "rgba(0,0,0,0.72)",
+					border: "1px solid rgba(255,255,255,0.16)",
+					boxShadow: "0 18px 48px rgba(0,0,0,0.35)",
 				}}
 			>
-				{/* Progress bar */}
+				<img
+					src={current.gifUrl}
+					alt={current.title}
+					style={{
+						flex: 1,
+						minHeight: 0,
+						width: "100%",
+						objectFit: "contain",
+						background: "rgba(0,0,0,0.18)",
+					}}
+				/>
 				<div
 					style={{
-						height: 2,
-						width: "100%",
-						background: "rgba(255,255,255,0.12)",
-						marginBottom: 14,
+						padding: "10px 12px 11px",
+						background:
+							"linear-gradient(180deg, rgba(0,0,0,0.54), rgba(0,0,0,0.82))",
 					}}
 				>
 					<div
 						style={{
-							height: "100%",
-							width: `${(1 - progress) * 100}%`,
-							background: "#ff6b35",
-							transition: "width 0.1s linear",
+							height: 3,
+							width: "100%",
+							background: "rgba(255,255,255,0.16)",
+							marginBottom: 8,
 						}}
-					/>
-				</div>
-
-				<div
-					style={{
-						display: "flex",
-						alignItems: "center",
-						gap: 20,
-					}}
-				>
-					{/* Current GIF thumbnail */}
-					<img
-						src={current.gifUrl}
-						alt={current.title}
-						style={{
-							width: 90,
-							height: 64,
-							objectFit: "cover",
-							borderRadius: 4,
-							flexShrink: 0,
-						}}
-					/>
-
-					{/* Now playing info */}
-					<div style={{ flex: "0 1 auto", minWidth: 0 }}>
+					>
 						<div
 							style={{
-								fontSize: 10,
-								letterSpacing: "0.18em",
-								textTransform: "uppercase",
-								color: "#ff6b35",
-								marginBottom: 4,
-								fontWeight: 600,
+								height: "100%",
+								width: `${(1 - progress) * 100}%`,
+								background: "#ff6b35",
+								transition: "width 0.1s linear",
 							}}
-						>
-							Now playing
-						</div>
-						<div
-							style={{
-								fontSize: 20,
-								fontWeight: 300,
-								letterSpacing: "-0.03em",
-								color: "#ffffff",
-								overflow: "hidden",
-								textOverflow: "ellipsis",
-								whiteSpace: "nowrap",
-							}}
-						>
-							{current.title}
-						</div>
-						{current.caption && (
-							<div
-								style={{
-									marginTop: 4,
-									fontSize: 14,
-									lineHeight: 1.35,
-									color: "rgba(255,255,255,0.82)",
-									maxWidth: 680,
-									overflow: "hidden",
-									display: "-webkit-box",
-									WebkitLineClamp: 2,
-									WebkitBoxOrient: "vertical",
-								}}
-							>
-								{current.caption}
-							</div>
-						)}
+						/>
 					</div>
-
-					{/* Up next */}
-					{upNext.length > 0 && (
+					<div
+						style={{
+							fontSize: 18,
+							fontWeight: 400,
+							color: "#ffffff",
+							overflow: "hidden",
+							textOverflow: "ellipsis",
+							whiteSpace: "nowrap",
+						}}
+					>
+						{current.title}
+					</div>
+					{current.caption && (
 						<div
 							style={{
-								marginLeft: "auto",
-								display: "flex",
-								alignItems: "center",
-								gap: 16,
+								marginTop: 4,
+								fontSize: 13,
+								lineHeight: 1.35,
+								color: "rgba(255,255,255,0.82)",
+								overflow: "hidden",
+								display: "-webkit-box",
+								WebkitLineClamp: 2,
+								WebkitBoxOrient: "vertical",
 							}}
 						>
-							<div
-								style={{
-									fontSize: 10,
-									letterSpacing: "0.18em",
-									textTransform: "uppercase",
-									color: "rgba(255,255,255,0.45)",
-									fontWeight: 600,
-								}}
-							>
-								Up next
-							</div>
-							{upNext.map((g) => (
-								<div
-									key={g.id}
-									style={{
-										display: "flex",
-										alignItems: "center",
-										gap: 8,
-										opacity: 0.85,
-									}}
-								>
-									<img
-										src={g.gifUrl}
-										alt={g.title}
-										style={{
-											width: 48,
-											height: 32,
-											objectFit: "cover",
-											borderRadius: 3,
-											flexShrink: 0,
-										}}
-									/>
-									<div
-										style={{
-											fontSize: 11,
-											color: "rgba(255,255,255,0.70)",
-											maxWidth: 100,
-											overflow: "hidden",
-											textOverflow: "ellipsis",
-											whiteSpace: "nowrap",
-										}}
-									>
-										{g.title}
-									</div>
-								</div>
-							))}
+							{current.caption}
 						</div>
 					)}
 				</div>
