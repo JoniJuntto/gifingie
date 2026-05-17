@@ -1,6 +1,5 @@
 import { cors } from "@elysiajs/cors";
 import { createContext } from "@my-better-t-app/api/context";
-import { isExtensionOrigin } from "@my-better-t-app/api/extension-cors";
 import { extensionRouter } from "@my-better-t-app/api/routers/extension";
 import { appRouter } from "@my-better-t-app/api/routers/index";
 import {
@@ -19,12 +18,11 @@ import { Elysia, t } from "elysia";
 new Elysia()
 	.use(
 		cors({
-			origin: ({ request }) => {
-				const origin = request.headers.get("origin");
-				if (!origin) return false;
-				if (isExtensionOrigin(origin)) return true;
-				return origin === env.CORS_ORIGIN;
-			},
+			origin: [
+				env.CORS_ORIGIN,
+				/^https:\/\/[a-z0-9-]+\.ext-twitch\.tv$/,
+				"https://localhost.twitch.tv",
+			],
 			methods: ["GET", "POST", "OPTIONS"],
 			allowedHeaders: ["Content-Type", "Authorization"],
 			credentials: true,
