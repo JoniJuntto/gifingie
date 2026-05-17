@@ -97,7 +97,7 @@ function RouteComponent() {
 	const lastSeenId = useRef<number | null>(null);
 	const seenIds = useRef(new Set<number>());
 	const audioRef = useRef<HTMLAudioElement>(null);
-	const apiBase = useMemo(() => env.VITE_SERVER_URL.replace(/\/$/, ""), []);
+	const apiBase = useMemo(() => env.VITE_SERVER_URL ?? "https://gifingie.huikaton.online".replace(/\/$/, ""), []);
 
 	useEffect(() => {
 		let cancelled = false;
