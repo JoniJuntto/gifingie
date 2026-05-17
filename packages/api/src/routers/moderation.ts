@@ -16,7 +16,7 @@ import { createSignedDisplayUrl } from "../services/uploads";
 export const TWITCH_MODERATED_CHANNELS_SCOPE = "user:read:moderated_channels";
 
 function hasModeratedChannelsScope(scope: string | null) {
-	return Boolean(scope?.split(/\s+/).includes(TWITCH_MODERATED_CHANNELS_SCOPE));
+	return Boolean(scope?.split(/[\s,]+/).includes(TWITCH_MODERATED_CHANNELS_SCOPE));
 }
 
 async function getTwitchAccountForUser(userId: string) {
