@@ -1,5 +1,6 @@
 import { cors } from "@elysiajs/cors";
 import { createContext } from "@my-better-t-app/api/context";
+import { isExtensionOrigin } from "@my-better-t-app/api/extension-cors";
 import { extensionRouter } from "@my-better-t-app/api/routers/extension";
 import { appRouter } from "@my-better-t-app/api/routers/index";
 import {
@@ -16,15 +17,20 @@ import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
 import { Elysia, t } from "elysia";
 
 new Elysia()
-	.use(extensionRouter)
 	.use(
 		cors({
-			origin: env.CORS_ORIGIN,
+			origin: ({ request }) => {
+				const origin = request.headers.get("origin");
+				if (!origin) return false;
+				if (isExtensionOrigin(origin)) return true;
+				return origin === env.CORS_ORIGIN;
+			},
 			methods: ["GET", "POST", "OPTIONS"],
 			allowedHeaders: ["Content-Type", "Authorization"],
 			credentials: true,
 		}),
 	)
+	.use(extensionRouter)
 	.all("/api/auth/*", async (context) => {
 		const { request, status } = context;
 		if (["POST", "GET"].includes(request.method)) {
