@@ -45,6 +45,10 @@ export const meRouter = router({
 						shareVisitCount: streamerProfile.shareVisitCount,
 						moderateGiphySubmissions: streamerProfile.moderateGiphySubmissions,
 						allowCustomUploads: streamerProfile.allowCustomUploads,
+						allowGifSubmissions: streamerProfile.allowGifSubmissions,
+						allowSoundSubmissions: streamerProfile.allowSoundSubmissions,
+						giphyAccess: streamerProfile.giphyAccess,
+						uploadAccess: streamerProfile.uploadAccess,
 					}
 				: null,
 		};

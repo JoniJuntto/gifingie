@@ -18,11 +18,17 @@ export const selectedRoleEnum = pgEnum("selected_role", ["streamer", "viewer"]);
 export const submissionSourceEnum = pgEnum("submission_source", [
 	"giphy",
 	"upload",
+	"sound",
 ]);
 export const moderationStatusEnum = pgEnum("moderation_status", [
 	"pending",
 	"approved",
 	"rejected",
+]);
+export const viewerAccessEnum = pgEnum("viewer_access", [
+	"everyone",
+	"followers",
+	"subscribers",
 ]);
 
 export const userPreferences = pgTable("user_preferences", {
@@ -66,6 +72,14 @@ export const streamerProfiles = pgTable(
 		allowCustomUploads: boolean("allow_custom_uploads")
 			.default(false)
 			.notNull(),
+		allowGifSubmissions: boolean("allow_gif_submissions")
+			.default(true)
+			.notNull(),
+		allowSoundSubmissions: boolean("allow_sound_submissions")
+			.default(true)
+			.notNull(),
+		giphyAccess: viewerAccessEnum("giphy_access").default("everyone").notNull(),
+		uploadAccess: viewerAccessEnum("upload_access").default("everyone").notNull(),
 		liveCheckedAt: timestamp("live_checked_at"),
 		isLive: boolean("is_live").default(false).notNull(),
 		liveStreamTitle: text("live_stream_title"),
@@ -107,6 +121,7 @@ export const gifSubmissions = pgTable(
 		byteSize: integer("byte_size"),
 		originalFilename: text("original_filename"),
 		uploadedAt: timestamp("uploaded_at"),
+		durationMs: integer("duration_ms"),
 		displayedAt: timestamp("displayed_at"),
 		createdAt: timestamp("created_at").defaultNow().notNull(),
 	},

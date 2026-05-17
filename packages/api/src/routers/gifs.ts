@@ -24,8 +24,32 @@ import {
 	createSignedDisplayUrl,
 	createSignedUploadUrl,
 	createUploadObjectKey,
-	validateUploadMetadata,
+	validateImageUploadMetadata,
+	validateSoundUploadMetadata,
 } from "../services/uploads";
+import { assertViewerAccess } from "../services/viewer-access";
+
+function assertGifSubmissionsAllowed(profile: {
+	allowGifSubmissions: boolean;
+}) {
+	if (!profile.allowGifSubmissions) {
+		throw new TRPCError({
+			code: "FORBIDDEN",
+			message: "This streamer is not accepting GIF submissions.",
+		});
+	}
+}
+
+function assertSoundSubmissionsAllowed(profile: {
+	allowSoundSubmissions: boolean;
+}) {
+	if (!profile.allowSoundSubmissions) {
+		throw new TRPCError({
+			code: "FORBIDDEN",
+			message: "This streamer is not accepting sound submissions.",
+		});
+	}
+}
 
 async function getEnrolledProfile(streamerProfileId: string) {
 	const [profile] = await db
@@ -106,7 +130,7 @@ async function assertViewerRateLimit(input: {
 	if ((recentViewerSubmission?.value ?? 0) > 0) {
 		throw new TRPCError({
 			code: "TOO_MANY_REQUESTS",
-			message: "Please wait before sending another image.",
+			message: "Please wait before sending again.",
 		});
 	}
 }
@@ -114,8 +138,14 @@ async function assertViewerRateLimit(input: {
 export const gifsRouter = router({
 	listCustomUploads: protectedProcedure
 		.input(z.object({ streamerProfileId: z.uuid() }))
-		.query(async ({ input }) => {
+		.query(async ({ ctx, input }) => {
 			const profile = await getEnrolledProfile(input.streamerProfileId);
+			await assertViewerAccess({
+				profile,
+				action: "upload",
+				viewerUserId: ctx.session.user.id,
+				viewerIsAnonymous: Boolean(ctx.session.user.isAnonymous),
+			});
 			const submissions = await db
 				.select({
 					id: gifSubmissions.id,
@@ -173,6 +203,15 @@ export const gifsRouter = router({
 		)
 		.mutation(async ({ ctx, input }) => {
 			const profile = await getEnrolledProfile(input.streamerProfileId);
+			assertGifSubmissionsAllowed({
+				allowGifSubmissions: profile.allowGifSubmissions ?? true,
+			});
+			await assertViewerAccess({
+				profile,
+				action: "giphy",
+				viewerUserId: ctx.session.user.id,
+				viewerIsAnonymous: Boolean(ctx.session.user.isAnonymous),
+			});
 			await assertStreamerLive(profile);
 			await assertBacklogAvailable(profile.id);
 			await assertViewerRateLimit({
@@ -236,7 +275,7 @@ export const gifsRouter = router({
 			}),
 		)
 		.mutation(async ({ ctx, input }) => {
-			const validationError = validateUploadMetadata(input);
+			const validationError = validateImageUploadMetadata(input);
 			if (validationError) {
 				throw new TRPCError({
 					code: "BAD_REQUEST",
@@ -245,6 +284,15 @@ export const gifsRouter = router({
 			}
 
 			const profile = await getEnrolledProfile(input.streamerProfileId);
+			assertGifSubmissionsAllowed({
+				allowGifSubmissions: profile.allowGifSubmissions ?? true,
+			});
+			await assertViewerAccess({
+				profile,
+				action: "upload",
+				viewerUserId: ctx.session.user.id,
+				viewerIsAnonymous: Boolean(ctx.session.user.isAnonymous),
+			});
 			await assertStreamerLive(profile);
 			await assertBacklogAvailable(profile.id);
 			await assertViewerRateLimit({
@@ -308,6 +356,7 @@ export const gifsRouter = router({
 			const [existing] = await db
 				.select({
 					id: gifSubmissions.id,
+					streamerProfileId: gifSubmissions.streamerProfileId,
 					source: gifSubmissions.source,
 					s3Key: gifSubmissions.s3Key,
 					viewerUserId: gifSubmissions.viewerUserId,
@@ -328,6 +377,14 @@ export const gifsRouter = router({
 					message: "Upload submission not found.",
 				});
 			}
+
+			const profile = await getEnrolledProfile(existing.streamerProfileId);
+			await assertViewerAccess({
+				profile,
+				action: "upload",
+				viewerUserId: ctx.session.user.id,
+				viewerIsAnonymous: Boolean(ctx.session.user.isAnonymous),
+			});
 
 			if (existing.uploadedAt) {
 				return existing;
@@ -351,6 +408,15 @@ export const gifsRouter = router({
 		)
 		.mutation(async ({ ctx, input }) => {
 			const profile = await getEnrolledProfile(input.streamerProfileId);
+			assertGifSubmissionsAllowed({
+				allowGifSubmissions: profile.allowGifSubmissions ?? true,
+			});
+			await assertViewerAccess({
+				profile,
+				action: "upload",
+				viewerUserId: ctx.session.user.id,
+				viewerIsAnonymous: Boolean(ctx.session.user.isAnonymous),
+			});
 			await assertStreamerLive(profile);
 			await assertBacklogAvailable(profile.id);
 			await assertViewerRateLimit({
@@ -369,6 +435,7 @@ export const gifsRouter = router({
 					byteSize: gifSubmissions.byteSize,
 					originalFilename: gifSubmissions.originalFilename,
 					uploadedAt: gifSubmissions.uploadedAt,
+					durationMs: gifSubmissions.durationMs,
 				})
 				.from(gifSubmissions)
 				.where(
@@ -413,6 +480,251 @@ export const gifsRouter = router({
 					byteSize: original.byteSize,
 					originalFilename: original.originalFilename,
 					uploadedAt: original.uploadedAt,
+					durationMs: original.durationMs,
+					displayedAt: null,
+				})
+				.returning();
+
+			return submission;
+		}),
+	listChannelSounds: protectedProcedure
+		.input(z.object({ streamerProfileId: z.uuid() }))
+		.query(async ({ input }) => {
+			const profile = await getEnrolledProfile(input.streamerProfileId);
+			const submissions = await db
+				.select({
+					id: gifSubmissions.id,
+					title: gifSubmissions.title,
+					s3Key: gifSubmissions.s3Key,
+					contentType: gifSubmissions.contentType,
+					byteSize: gifSubmissions.byteSize,
+					originalFilename: gifSubmissions.originalFilename,
+					durationMs: gifSubmissions.durationMs,
+					createdAt: gifSubmissions.createdAt,
+				})
+				.from(gifSubmissions)
+				.where(
+					and(
+						eq(gifSubmissions.streamerProfileId, profile.id),
+						eq(gifSubmissions.source, "sound"),
+						eq(gifSubmissions.moderationStatus, "approved"),
+						isNotNull(gifSubmissions.uploadedAt),
+						isNotNull(gifSubmissions.s3Key),
+					),
+				)
+				.orderBy(desc(gifSubmissions.createdAt))
+				.limit(100);
+
+			const uniqueSubmissions = submissions.filter((submission, index) => {
+				if (!submission.s3Key) return false;
+				return (
+					submissions.findIndex(
+						(candidate) => candidate.s3Key === submission.s3Key,
+					) === index
+				);
+			});
+
+			return Promise.all(
+				uniqueSubmissions.map(async (submission) => ({
+					...submission,
+					audioUrl: await createSignedDisplayUrl(submission.s3Key as string),
+				})),
+			);
+		}),
+	createSoundUpload: protectedProcedure
+		.input(
+			z.object({
+				streamerProfileId: z.uuid(),
+				contentType: z.string().min(1),
+				byteSize: z.number().int().positive(),
+				originalFilename: z.string().trim().min(1).max(255).optional(),
+			}),
+		)
+		.mutation(async ({ ctx, input }) => {
+			const validationError = validateSoundUploadMetadata(input);
+			if (validationError) {
+				throw new TRPCError({
+					code: "BAD_REQUEST",
+					message: validationError,
+				});
+			}
+
+			const profile = await getEnrolledProfile(input.streamerProfileId);
+			assertSoundSubmissionsAllowed({
+				allowSoundSubmissions: profile.allowSoundSubmissions ?? true,
+			});
+			await assertStreamerLive(profile);
+			await assertBacklogAvailable(profile.id);
+			await assertViewerRateLimit({
+				streamerProfileId: profile.id,
+				viewerUserId: ctx.session.user.id,
+			});
+
+			const title = input.originalFilename?.trim() || "Uploaded sound";
+			const [submission] = await db
+				.insert(gifSubmissions)
+				.values({
+					streamerProfileId: profile.id,
+					viewerUserId: ctx.session.user.id,
+					source: "sound",
+					moderationStatus: "pending",
+					title,
+					contentType: input.contentType,
+					byteSize: input.byteSize,
+					originalFilename: title,
+				})
+				.returning();
+
+			if (!submission) {
+				throw new TRPCError({
+					code: "INTERNAL_SERVER_ERROR",
+					message: "Could not create sound upload submission.",
+				});
+			}
+
+			const key = createUploadObjectKey({
+				streamerProfileId: profile.id,
+				submissionId: submission.id,
+				originalFilename: input.originalFilename,
+			});
+			await db
+				.update(gifSubmissions)
+				.set({ s3Key: key })
+				.where(eq(gifSubmissions.id, submission.id));
+
+			const uploadUrl = await createSignedUploadUrl({
+				key,
+				contentType: input.contentType,
+				byteSize: input.byteSize,
+			});
+
+			return {
+				submissionId: submission.id,
+				uploadUrl,
+				headers: {
+					"Content-Type": input.contentType,
+				},
+			};
+		}),
+	completeSoundUpload: protectedProcedure
+		.input(
+			z.object({
+				submissionId: z.number().int().positive(),
+				durationMs: z.number().int().positive().max(120_000).optional(),
+			}),
+		)
+		.mutation(async ({ ctx, input }) => {
+			const [existing] = await db
+				.select({
+					id: gifSubmissions.id,
+					source: gifSubmissions.source,
+					s3Key: gifSubmissions.s3Key,
+					viewerUserId: gifSubmissions.viewerUserId,
+					uploadedAt: gifSubmissions.uploadedAt,
+				})
+				.from(gifSubmissions)
+				.where(eq(gifSubmissions.id, input.submissionId))
+				.limit(1);
+
+			if (
+				!existing ||
+				existing.viewerUserId !== ctx.session.user.id ||
+				existing.source !== "sound" ||
+				!existing.s3Key
+			) {
+				throw new TRPCError({
+					code: "NOT_FOUND",
+					message: "Sound upload submission not found.",
+				});
+			}
+
+			if (existing.uploadedAt) {
+				return existing;
+			}
+
+			const [submission] = await db
+				.update(gifSubmissions)
+				.set({
+					uploadedAt: new Date(),
+					...(input.durationMs ? { durationMs: input.durationMs } : {}),
+				})
+				.where(eq(gifSubmissions.id, input.submissionId))
+				.returning();
+
+			return submission;
+		}),
+	resendChannelSound: protectedProcedure
+		.input(
+			z.object({
+				streamerProfileId: z.uuid(),
+				submissionId: z.number().int().positive(),
+				caption: z.string().max(500).optional(),
+			}),
+		)
+		.mutation(async ({ ctx, input }) => {
+			const profile = await getEnrolledProfile(input.streamerProfileId);
+			assertSoundSubmissionsAllowed({
+				allowSoundSubmissions: profile.allowSoundSubmissions ?? true,
+			});
+			await assertStreamerLive(profile);
+			await assertBacklogAvailable(profile.id);
+			await assertViewerRateLimit({
+				streamerProfileId: profile.id,
+				viewerUserId: ctx.session.user.id,
+			});
+
+			const [original] = await db
+				.select({
+					title: gifSubmissions.title,
+					s3Key: gifSubmissions.s3Key,
+					contentType: gifSubmissions.contentType,
+					byteSize: gifSubmissions.byteSize,
+					originalFilename: gifSubmissions.originalFilename,
+					uploadedAt: gifSubmissions.uploadedAt,
+					durationMs: gifSubmissions.durationMs,
+				})
+				.from(gifSubmissions)
+				.where(
+					and(
+						eq(gifSubmissions.id, input.submissionId),
+						eq(gifSubmissions.streamerProfileId, profile.id),
+						eq(gifSubmissions.source, "sound"),
+						eq(gifSubmissions.moderationStatus, "approved"),
+						isNotNull(gifSubmissions.uploadedAt),
+						isNotNull(gifSubmissions.s3Key),
+					),
+				)
+				.limit(1);
+
+			if (!original?.s3Key || !original.uploadedAt) {
+				throw new TRPCError({
+					code: "NOT_FOUND",
+					message: "Approved sound not found.",
+				});
+			}
+
+			const caption = normalizeSubmissionCaption(input.caption);
+			const moderationStatus = resolveSubmissionModerationStatus({
+				caption,
+				source: "sound",
+				moderateGiphySubmissions: profile.moderateGiphySubmissions,
+			});
+
+			const [submission] = await db
+				.insert(gifSubmissions)
+				.values({
+					streamerProfileId: profile.id,
+					viewerUserId: ctx.session.user.id,
+					source: "sound",
+					moderationStatus,
+					title: original.title,
+					caption,
+					s3Key: original.s3Key,
+					contentType: original.contentType,
+					byteSize: original.byteSize,
+					originalFilename: original.originalFilename,
+					uploadedAt: original.uploadedAt,
+					durationMs: original.durationMs,
 					displayedAt: null,
 				})
 				.returning();

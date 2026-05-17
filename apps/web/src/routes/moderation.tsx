@@ -397,16 +397,35 @@ function RouteComponent() {
 											borderBottom: "1px solid var(--gf-hl)",
 										}}
 									>
-										<img
-											src={sub.previewUrl ?? sub.gifUrl}
-											alt={sub.title}
-											style={{
-												width: 80,
-												height: 48,
-												objectFit: "cover",
-												borderRadius: 3,
-											}}
-										/>
+										{sub.source === "sound" ? (
+											<div
+												style={{
+													width: 80,
+													height: 48,
+													borderRadius: 3,
+													background: "var(--gf-t2)",
+													display: "flex",
+													alignItems: "center",
+													justifyContent: "center",
+													fontFamily: "var(--gf-font-mono)",
+													fontSize: 10,
+													color: "var(--gf-muted)",
+												}}
+											>
+												SND
+											</div>
+										) : (
+											<img
+												src={sub.previewUrl ?? sub.gifUrl}
+												alt={sub.title}
+												style={{
+													width: 80,
+													height: 48,
+													objectFit: "cover",
+													borderRadius: 3,
+												}}
+											/>
+										)}
 										<div style={{ minWidth: 0 }}>
 											<div
 												style={{
@@ -429,7 +448,11 @@ function RouteComponent() {
 													marginTop: 2,
 												}}
 											>
-												{sub.source === "upload" ? "Custom upload" : "GIPHY"}
+												{sub.source === "upload"
+													? "Custom upload"
+													: sub.source === "sound"
+														? "Sound"
+														: "GIPHY"}
 											</div>
 											{sub.caption ? (
 												<div

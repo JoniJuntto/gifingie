@@ -125,4 +125,25 @@ describe("resolveSubmissionModerationStatus", () => {
 			}),
 		).toBe("pending");
 	});
+
+	it("queues new sounds regardless of caption", () => {
+		expect(
+			resolveSubmissionModerationStatus({
+				caption: null,
+				source: "sound",
+				moderateGiphySubmissions: false,
+				isNewUpload: true,
+			}),
+		).toBe("pending");
+	});
+
+	it("auto-approves resend sounds when caption is clean", () => {
+		expect(
+			resolveSubmissionModerationStatus({
+				caption: "nice play",
+				source: "sound",
+				moderateGiphySubmissions: false,
+			}),
+		).toBe("approved");
+	});
 });

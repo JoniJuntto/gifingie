@@ -6,15 +6,17 @@ export const Route = createFileRoute("/overlay/$overlayToken")({
 	component: RouteComponent,
 });
 
-type OverlayGif = {
+type OverlayItem = {
 	id: number;
+	source?: "giphy" | "upload" | "sound";
 	gifUrl: string;
 	title: string;
 	caption?: string | null;
+	durationMs?: number | null;
 };
 
 type OverlayPayload = {
-	gifs?: OverlayGif[];
+	gifs?: OverlayItem[];
 	settings?: {
 		gifDisplaySeconds?: number;
 		overlayGifXPercent?: number;
@@ -24,7 +26,11 @@ type OverlayPayload = {
 	};
 };
 
-type CurrentOverlayGif = OverlayGif & { displaySeconds: number };
+type CurrentOverlayItem = OverlayItem & {
+	displaySeconds: number;
+	isSound: boolean;
+};
+
 type OverlayLayout = {
 	overlayGifXPercent: number;
 	overlayGifYPercent: number;
@@ -35,6 +41,7 @@ type OverlayLayout = {
 const DEFAULT_DISPLAY_SECONDS = 10;
 const MIN_DISPLAY_SECONDS = 1;
 const MAX_DISPLAY_SECONDS = 60;
+const MAX_SOUND_PLAYBACK_SECONDS = 30;
 const DEFAULT_OVERLAY_LAYOUT: OverlayLayout = {
 	overlayGifXPercent: 50,
 	overlayGifYPercent: 78,
@@ -69,18 +76,29 @@ function clampOverlayLayout(layout: OverlayLayout): OverlayLayout {
 	};
 }
 
+function soundMaxSeconds(
+	displaySeconds: number,
+	durationMs?: number | null,
+) {
+	const fromSettings = Math.min(displaySeconds, MAX_SOUND_PLAYBACK_SECONDS);
+	if (durationMs && durationMs > 0) {
+		return Math.min(fromSettings, durationMs / 1000);
+	}
+	return fromSettings;
+}
+
 function RouteComponent() {
 	const { overlayToken } = Route.useParams();
-	const [queue, setQueue] = useState<OverlayGif[]>([]);
-	const [current, setCurrent] = useState<CurrentOverlayGif | null>(null);
+	const [queue, setQueue] = useState<OverlayItem[]>([]);
+	const [current, setCurrent] = useState<CurrentOverlayItem | null>(null);
 	const [displaySeconds, setDisplaySeconds] = useState(DEFAULT_DISPLAY_SECONDS);
 	const [layout, setLayout] = useState<OverlayLayout>(DEFAULT_OVERLAY_LAYOUT);
 	const [elapsed, setElapsed] = useState(0);
 	const lastSeenId = useRef<number | null>(null);
 	const seenIds = useRef(new Set<number>());
+	const audioRef = useRef<HTMLAudioElement>(null);
 	const apiBase = useMemo(() => env.VITE_SERVER_URL.replace(/\/$/, ""), []);
 
-	// Poll for new gifs
 	useEffect(() => {
 		let cancelled = false;
 
@@ -91,7 +109,7 @@ function RouteComponent() {
 			);
 			if (!response.ok || cancelled) return;
 
-			const payload = (await response.json()) as OverlayPayload | OverlayGif[];
+			const payload = (await response.json()) as OverlayPayload | OverlayItem[];
 			const gifs = Array.isArray(payload) ? payload : (payload.gifs ?? []);
 			const maybeDs = Array.isArray(payload)
 				? undefined
@@ -139,16 +157,21 @@ function RouteComponent() {
 		};
 	}, [apiBase, overlayToken]);
 
-	// Advance queue
 	useEffect(() => {
 		if (current || queue.length === 0) return;
 		const [next, ...rest] = queue;
-		setCurrent({ ...next, displaySeconds });
+		const isSound = next.source === "sound";
+		setCurrent({
+			...next,
+			isSound,
+			displaySeconds: isSound
+				? soundMaxSeconds(displaySeconds, next.durationMs)
+				: displaySeconds,
+		});
 		setQueue(rest);
 		setElapsed(0);
 	}, [current, displaySeconds, queue]);
 
-	// Elapsed progress & ack
 	useEffect(() => {
 		if (!current) return;
 
@@ -157,6 +180,10 @@ function RouteComponent() {
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({ submissionId: current.id }),
 		});
+	}, [apiBase, current, overlayToken]);
+
+	useEffect(() => {
+		if (!current || current.isSound) return;
 
 		const startMs = Date.now();
 		const tickMs = 100;
@@ -170,12 +197,62 @@ function RouteComponent() {
 		}, tickMs);
 
 		return () => window.clearInterval(iv);
-	}, [apiBase, current, overlayToken]);
+	}, [current]);
 
-	const progress = current ? Math.min(1, elapsed / current.displaySeconds) : 0;
+	useEffect(() => {
+		if (!current?.isSound) return;
+
+		const audio = audioRef.current;
+		if (!audio) return;
+
+		let cancelled = false;
+		const startMs = Date.now();
+		let playbackSeconds = current.displaySeconds;
+
+		const finish = () => {
+			if (!cancelled) setCurrent(null);
+		};
+
+		const onLoadedMetadata = () => {
+			if (cancelled || !Number.isFinite(audio.duration)) return;
+			playbackSeconds = Math.min(
+				audio.duration,
+				soundMaxSeconds(displaySeconds, current.durationMs),
+			);
+			setCurrent((item) =>
+				item ? { ...item, displaySeconds: playbackSeconds } : null,
+			);
+		};
+
+		const onEnded = () => finish();
+
+		const tickIv = window.setInterval(() => {
+			const e = (Date.now() - startMs) / 1000;
+			setElapsed(e);
+			if (e >= playbackSeconds) {
+				audio.pause();
+				finish();
+			}
+		}, 100);
+
+		audio.addEventListener("loadedmetadata", onLoadedMetadata);
+		audio.addEventListener("ended", onEnded);
+		void audio.play().catch(() => finish());
+
+		return () => {
+			cancelled = true;
+			window.clearInterval(tickIv);
+			audio.removeEventListener("loadedmetadata", onLoadedMetadata);
+			audio.removeEventListener("ended", onEnded);
+			audio.pause();
+		};
+	}, [current, displaySeconds]);
+
+	const progress = current
+		? Math.min(1, elapsed / Math.max(current.displaySeconds, 0.001))
+		: 0;
 	const safeLayout = clampOverlayLayout(layout);
 
-	// Show nothing when idle
 	if (!current) {
 		return (
 			<div
@@ -200,6 +277,9 @@ function RouteComponent() {
 				WebkitFontSmoothing: "antialiased",
 			}}
 		>
+			{current.isSound ? (
+				<audio ref={audioRef} src={current.gifUrl} preload="auto" />
+			) : null}
 			<div
 				style={{
 					position: "absolute",
@@ -209,7 +289,7 @@ function RouteComponent() {
 					height: `${safeLayout.overlayGifHeightPercent}%`,
 					transform: "translate(-50%, -50%)",
 					minWidth: 96,
-					minHeight: 72,
+					minHeight: current.isSound ? 56 : 72,
 					display: "flex",
 					flexDirection: "column",
 					background: "rgba(0,0,0,0.72)",
@@ -217,17 +297,32 @@ function RouteComponent() {
 					boxShadow: "0 18px 48px rgba(0,0,0,0.35)",
 				}}
 			>
-				<img
-					src={current.gifUrl}
-					alt={current.title}
-					style={{
-						flex: 1,
-						minHeight: 0,
-						width: "100%",
-						objectFit: "contain",
-						background: "rgba(0,0,0,0.18)",
-					}}
-				/>
+				{current.isSound ? (
+					<div
+						style={{
+							flex: 1,
+							display: "flex",
+							alignItems: "center",
+							justifyContent: "center",
+							fontSize: 42,
+							background: "rgba(0,0,0,0.18)",
+						}}
+					>
+						SOUND
+					</div>
+				) : (
+					<img
+						src={current.gifUrl}
+						alt={current.title}
+						style={{
+							flex: 1,
+							minHeight: 0,
+							width: "100%",
+							objectFit: "contain",
+							background: "rgba(0,0,0,0.18)",
+						}}
+					/>
+				)}
 				<div
 					style={{
 						padding: "10px 12px 11px",
@@ -283,7 +378,6 @@ function RouteComponent() {
 				</div>
 			</div>
 
-			{/* Brand pinpoint */}
 			<div
 				style={{
 					position: "absolute",

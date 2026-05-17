@@ -11,7 +11,13 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
-import { authClient } from "@/lib/auth-client";
+import { appUrl, authClient } from "@/lib/auth-client";
+import {
+	canSendGiphyToStreamer,
+	canUseCustomUploadsForStreamer,
+	getGiphyAccessHint,
+	getUploadAccessHint,
+} from "@/lib/viewer-access";
 import { queryClient, trpc, trpcClient } from "@/utils/trpc";
 
 export const Route = createFileRoute("/viewer")({
@@ -193,6 +199,11 @@ export type Streamer = {
 	twitchAvatarUrl?: string | null;
 	streamTitle?: string | null;
 	streamThumbnailUrl?: string | null;
+	allowCustomUploads?: boolean;
+	allowGifSubmissions?: boolean;
+	allowSoundSubmissions?: boolean;
+	giphyAccess?: "everyone" | "followers" | "subscribers";
+	uploadAccess?: "everyone" | "followers" | "subscribers";
 };
 
 type GifResult = {
@@ -211,11 +222,41 @@ type CustomUploadResult = {
 	originalFilename?: string | null;
 };
 
+type ChannelSoundResult = {
+	id: number;
+	title: string;
+	audioUrl: string;
+	contentType?: string | null;
+	originalFilename?: string | null;
+	durationMs?: number | null;
+};
+
 type SelectedImage =
 	| (GifResult & { source: "giphy" })
-	| (CustomUploadResult & { source: "upload" });
+	| (CustomUploadResult & { source: "upload" })
+	| (ChannelSoundResult & { source: "sound" });
 
 const PICKER_SKELETON_KEYS = ["one", "two", "three", "four", "five", "six"];
+
+async function readAudioDurationMs(file: File) {
+	return new Promise<number | undefined>((resolve) => {
+		const url = URL.createObjectURL(file);
+		const audio = new Audio(url);
+		const cleanup = () => URL.revokeObjectURL(url);
+		audio.addEventListener("loadedmetadata", () => {
+			cleanup();
+			if (Number.isFinite(audio.duration) && audio.duration > 0) {
+				resolve(Math.round(audio.duration * 1000));
+			} else {
+				resolve(undefined);
+			}
+		});
+		audio.addEventListener("error", () => {
+			cleanup();
+			resolve(undefined);
+		});
+	});
+}
 
 // ─── Picker screen ────────────────────────────────────────────────────────────
 function PickerScreen({
@@ -488,12 +529,17 @@ export function SearchScreen({
 }) {
 	const [query, setQuery] = useState("");
 	const [searchQuery, setSearchQuery] = useState("");
-	const [activeTab, setActiveTab] = useState<"giphy" | "custom">("giphy");
+	const allowGifSubmissions = streamer.allowGifSubmissions !== false;
+	const allowSoundSubmissions = streamer.allowSoundSubmissions !== false;
+	const [activeTab, setActiveTab] = useState<"giphy" | "custom" | "sounds">(
+		"giphy",
+	);
 	const [selectedImage, setSelectedImage] = useState<SelectedImage | null>(
 		null,
 	);
 	const [caption, setCaption] = useState("");
 	const fileRef = useRef<HTMLInputElement>(null);
+	const soundFileRef = useRef<HTMLInputElement>(null);
 	const searchRef = useRef<HTMLInputElement>(null);
 	const { data: session } = authClient.useSession();
 	const [sessionStatus, setSessionStatus] = useState<
@@ -509,6 +555,11 @@ export function SearchScreen({
 			if (cancelled) return;
 
 			if (existingSession.data) {
+				setSessionStatus("ready");
+				return;
+			}
+
+			if ((streamer.giphyAccess ?? "everyone") !== "everyone") {
 				setSessionStatus("ready");
 				return;
 			}
@@ -541,7 +592,7 @@ export function SearchScreen({
 		return () => {
 			cancelled = true;
 		};
-	}, []);
+	}, [streamer.giphyAccess]);
 
 	// ⌘K / Ctrl+K focuses the search input
 	useEffect(() => {
@@ -555,8 +606,37 @@ export function SearchScreen({
 		return () => window.removeEventListener("keydown", onKey);
 	}, []);
 
-	const canUseGiphy = sessionStatus === "ready";
-	const canUseCustomUploads = Boolean(session && !session.user.isAnonymous);
+	const isAnonymous = !session || Boolean(session.user.isAnonymous);
+	const sessionReady = sessionStatus === "ready";
+	const canUseGiphy =
+		sessionReady &&
+		allowGifSubmissions &&
+		Boolean(session || (streamer.giphyAccess ?? "everyone") === "everyone");
+	const canSendGiphy = canSendGiphyToStreamer(streamer, {
+		sessionReady,
+		isAnonymous,
+	});
+	const canUseCustomUploads =
+		canUseCustomUploadsForStreamer(streamer, { isAnonymous }) &&
+		allowGifSubmissions;
+	const canUseSounds =
+		Boolean(session && !session.user.isAnonymous) && allowSoundSubmissions;
+	const giphyAccessHint = getGiphyAccessHint(streamer, isAnonymous);
+	const uploadAccessHint = getUploadAccessHint(streamer, isAnonymous);
+	const signInWithTwitch = () => {
+		authClient.signIn.social({
+			provider: "twitch",
+			callbackURL: appUrl(`/s/${streamer.twitchChannelLogin}`),
+		});
+	};
+
+	useEffect(() => {
+		if (!allowGifSubmissions && allowSoundSubmissions) {
+			setActiveTab("sounds");
+		} else if (allowGifSubmissions) {
+			setActiveTab("giphy");
+		}
+	}, [allowGifSubmissions, allowSoundSubmissions]);
 
 	const giphy = useQuery({
 		...trpc.giphy.search.queryOptions({ query: searchQuery }),
@@ -568,6 +648,13 @@ export function SearchScreen({
 			streamerProfileId: streamer.id,
 		}),
 		enabled: canUseCustomUploads,
+	});
+
+	const channelSounds = useQuery({
+		...trpc.gifs.listChannelSounds.queryOptions({
+			streamerProfileId: streamer.id,
+		}),
+		enabled: canUseSounds,
 	});
 
 	const submit = useMutation(
@@ -593,6 +680,22 @@ export function SearchScreen({
 					submission.moderationStatus === "pending"
 						? "Sent for approval"
 						: "Custom image sent to overlay",
+				);
+				setSelectedImage(null);
+				setCaption("");
+				await queryClient.invalidateQueries();
+			},
+			onError: (error) => toast.error(error.message),
+		}),
+	);
+
+	const resendChannelSound = useMutation(
+		trpc.gifs.resendChannelSound.mutationOptions({
+			onSuccess: async (submission) => {
+				toast.success(
+					submission.moderationStatus === "pending"
+						? "Sent for approval"
+						: "Sound sent to overlay",
 				);
 				setSelectedImage(null);
 				setCaption("");
@@ -628,11 +731,43 @@ export function SearchScreen({
 		onError: (error) => toast.error(error.message),
 	});
 
+	const soundUpload = useMutation({
+		mutationFn: async (file: File) => {
+			const durationMs = await readAudioDurationMs(file);
+			const uploadRequest = await trpcClient.gifs.createSoundUpload.mutate({
+				streamerProfileId: streamer.id,
+				contentType: file.type,
+				byteSize: file.size,
+				originalFilename: file.name,
+			});
+			const uploadResponse = await fetch(uploadRequest.uploadUrl, {
+				method: "PUT",
+				headers: uploadRequest.headers,
+				body: file,
+			});
+			if (!uploadResponse.ok) throw new Error("Upload to storage failed.");
+			return trpcClient.gifs.completeSoundUpload.mutate({
+				submissionId: uploadRequest.submissionId,
+				durationMs,
+			});
+		},
+		onSuccess: async () => {
+			if (soundFileRef.current) soundFileRef.current.value = "";
+			toast.success("Sent for approval");
+			await queryClient.invalidateQueries();
+		},
+		onError: (error) => toast.error(error.message),
+	});
+
 	const gifs: GifResult[] = giphy.data ?? [];
 	const uploads: CustomUploadResult[] = customUploads.data ?? [];
-	const isSending = submit.isPending || resendCustomUpload.isPending;
+	const sounds: ChannelSoundResult[] = channelSounds.data ?? [];
+	const isSending =
+		submit.isPending ||
+		resendCustomUpload.isPending ||
+		resendChannelSound.isPending;
 
-	function selectTab(tab: "giphy" | "custom") {
+	function selectTab(tab: "giphy" | "custom" | "sounds") {
 		setActiveTab(tab);
 		setSelectedImage(null);
 		setCaption("");
@@ -641,8 +776,8 @@ export function SearchScreen({
 	const handleSend = useCallback(() => {
 		if (!selectedImage) return;
 		if (selectedImage.source === "giphy") {
-			if (!canUseGiphy) {
-				toast.error("Anonymous access is still starting.");
+			if (!canSendGiphy) {
+				toast.error(giphyAccessHint ?? "You cannot send GIFs to this channel.");
 				return;
 			}
 			submit.mutate({
@@ -658,7 +793,19 @@ export function SearchScreen({
 			return;
 		}
 		if (!canUseCustomUploads) {
-			toast.error("Sign in with Twitch to use custom uploads.");
+			toast.error(uploadAccessHint ?? "You cannot use custom uploads on this channel.");
+			return;
+		}
+		if (selectedImage.source === "sound") {
+			if (!canUseSounds) {
+				toast.error("Sign in with Twitch to send sounds.");
+				return;
+			}
+			resendChannelSound.mutate({
+				streamerProfileId: streamer.id,
+				submissionId: selectedImage.id,
+				caption,
+			});
 			return;
 		}
 		resendCustomUpload.mutate({
@@ -668,10 +815,14 @@ export function SearchScreen({
 		});
 	}, [
 		selectedImage,
-		canUseGiphy,
+		canSendGiphy,
 		canUseCustomUploads,
+		giphyAccessHint,
+		uploadAccessHint,
+		canUseSounds,
 		submit,
 		resendCustomUpload,
+		resendChannelSound,
 		streamer.id,
 		caption,
 	]);
@@ -778,8 +929,15 @@ export function SearchScreen({
 				>
 					{(
 						[
-							["giphy", "GIPHY", null],
-							["custom", "Custom uploads", uploads.length],
+							...(allowGifSubmissions
+								? ([["giphy", "GIPHY", null]] as const)
+								: []),
+							...(allowGifSubmissions && streamer.allowCustomUploads !== false
+								? ([["custom", "Custom uploads", uploads.length]] as const)
+								: []),
+							...(allowSoundSubmissions
+								? ([["sounds", "Sounds", sounds.length]] as const)
+								: []),
 						] as const
 					).map(([tab, label, count]) => (
 						<button
@@ -816,19 +974,67 @@ export function SearchScreen({
 							)}
 						</button>
 					))}
-					{activeTab === "custom" && (
+					{(activeTab === "custom" || activeTab === "sounds") && (
 						<button
 							type="button"
 							className="gf-btn ghost"
 							style={{ marginLeft: "auto", fontSize: 13 }}
-							disabled={!canUseCustomUploads || customUploads.isFetching}
-							onClick={() => customUploads.refetch()}
+							disabled={
+								(activeTab === "custom" &&
+									(!canUseCustomUploads || customUploads.isFetching)) ||
+								(activeTab === "sounds" &&
+									(!canUseSounds || channelSounds.isFetching))
+							}
+							onClick={() => {
+								if (activeTab === "custom") customUploads.refetch();
+								else channelSounds.refetch();
+							}}
 						>
 							<RefreshCwIcon size={13} />
 							Refresh
 						</button>
 					)}
 				</div>
+
+				{(giphyAccessHint || uploadAccessHint) && (
+					<div
+						style={{
+							marginTop: 20,
+							padding: "12px 16px",
+							borderRadius: 8,
+							border: "1px solid var(--gf-hl)",
+							background: "var(--gf-t2)",
+							display: "flex",
+							alignItems: "center",
+							justifyContent: "space-between",
+							gap: 16,
+							flexWrap: "wrap",
+						}}
+					>
+						<p
+							style={{
+								margin: 0,
+								fontSize: 14,
+								color: "var(--gf-muted)",
+								fontFamily: "var(--gf-font-ui)",
+								lineHeight: 1.5,
+							}}
+						>
+							{activeTab === "custom"
+								? (uploadAccessHint ?? giphyAccessHint)
+								: (giphyAccessHint ?? uploadAccessHint)}
+						</p>
+						{isAnonymous && (
+							<button
+								type="button"
+								className="gf-btn sm"
+								onClick={signInWithTwitch}
+							>
+								Sign in with Twitch
+							</button>
+						)}
+					</div>
+				)}
 
 				{/* Row 3 (GIPHY only): hero search input */}
 				{activeTab === "giphy" && (
@@ -1009,6 +1215,61 @@ export function SearchScreen({
 							: "Sign in with Twitch to browse and send custom uploads."}
 					</div>
 				)}
+
+				{activeTab === "sounds" && (
+					<div
+						style={{
+							paddingTop: 16,
+							paddingBottom: 4,
+							display: "flex",
+							alignItems: "center",
+							justifyContent: "space-between",
+							gap: 16,
+							fontSize: 13,
+							color: "var(--gf-muted)",
+							fontFamily: "var(--gf-font-ui)",
+						}}
+					>
+						<span>
+							{canUseSounds
+								? "Upload a sound or resend one the channel already approved."
+								: "Sign in with Twitch to upload and send sounds."}
+						</span>
+						<label
+							style={{
+								display: "inline-flex",
+								alignItems: "center",
+								gap: 7,
+								color: "var(--gf-text)",
+								cursor:
+									canUseSounds && !soundUpload.isPending
+										? "pointer"
+										: "default",
+								opacity: canUseSounds && !soundUpload.isPending ? 1 : 0.45,
+							}}
+						>
+							<UploadIcon size={13} />
+							{soundUpload.isPending ? "Uploading…" : "Upload sound"}
+							<input
+								ref={soundFileRef}
+								type="file"
+								accept="audio/mpeg,audio/wav,audio/ogg,audio/webm"
+								style={{ display: "none" }}
+								disabled={!canUseSounds || soundUpload.isPending}
+								onChange={(e) => {
+									const file = e.target.files?.[0] ?? null;
+									if (!file) return;
+									if (file.size > 5 * 1024 * 1024) {
+										toast.error("Sound must be 5 MB or smaller.");
+										e.currentTarget.value = "";
+										return;
+									}
+									soundUpload.mutate(file);
+								}}
+							/>
+						</label>
+					</div>
+				)}
 			</div>
 
 			{/* ── Masonry grid ── */}
@@ -1102,7 +1363,7 @@ export function SearchScreen({
 				{/* Custom uploads */}
 				{activeTab === "custom" && (
 					<>
-						{!canUseCustomUploads && (
+						{!canUseCustomUploads && uploadAccessHint && (
 							<p
 								style={{
 									color: "var(--gf-muted)",
@@ -1110,7 +1371,7 @@ export function SearchScreen({
 									fontFamily: "var(--gf-font-ui)",
 								}}
 							>
-								Sign in with Twitch to browse and send custom uploads.
+								{uploadAccessHint}
 							</p>
 						)}
 
@@ -1178,6 +1439,117 @@ export function SearchScreen({
 							)}
 					</>
 				)}
+
+				{activeTab === "sounds" && (
+					<>
+						{!canUseSounds && (
+							<p
+								style={{
+									color: "var(--gf-muted)",
+									fontSize: 14,
+									fontFamily: "var(--gf-font-ui)",
+								}}
+							>
+								Sign in with Twitch to upload and send sounds.
+							</p>
+						)}
+
+						{canUseSounds && channelSounds.isLoading && (
+							<div style={{ columnCount: 4, columnGap: 14 }}>
+								{PICKER_SKELETON_KEYS.map((key) => (
+									<div
+										key={key}
+										style={{ breakInside: "avoid", marginBottom: 14 }}
+									>
+										<div
+											style={{
+												aspectRatio: "16/9",
+												borderRadius: 4,
+												background: "var(--gf-t2)",
+											}}
+										/>
+									</div>
+								))}
+							</div>
+						)}
+
+						{canUseSounds && !channelSounds.isLoading && sounds.length > 0 && (
+							<div
+								style={{
+									display: "grid",
+									gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))",
+									gap: 14,
+								}}
+							>
+								{sounds.map((sound) => (
+									<button
+										key={sound.id}
+										type="button"
+										className="gf-btn ghost"
+										style={{
+											textAlign: "left",
+											padding: "14px 16px",
+											border:
+												selectedImage?.source === "sound" &&
+												selectedImage.id === sound.id
+													? "2px solid var(--gf-text)"
+													: "1px solid var(--gf-hl)",
+											borderRadius: 8,
+											background: "var(--gf-t1)",
+										}}
+										onClick={() =>
+											setSelectedImage(
+												selectedImage?.source === "sound" &&
+													selectedImage.id === sound.id
+													? null
+													: { ...sound, source: "sound" },
+											)
+										}
+									>
+										<div
+											style={{
+												fontSize: 13,
+												fontWeight: 500,
+												color: "var(--gf-text)",
+												overflow: "hidden",
+												textOverflow: "ellipsis",
+												whiteSpace: "nowrap",
+											}}
+										>
+											{sound.title}
+										</div>
+										<div
+											style={{
+												marginTop: 6,
+												fontSize: 11,
+												color: "var(--gf-muted-2)",
+												fontFamily: "var(--gf-font-mono)",
+											}}
+										>
+											{sound.durationMs
+												? `${Math.round(sound.durationMs / 1000)}s`
+												: "sound"}
+										</div>
+									</button>
+								))}
+							</div>
+						)}
+
+						{canUseSounds &&
+							!channelSounds.isLoading &&
+							sounds.length === 0 && (
+								<p
+									style={{
+										color: "var(--gf-muted)",
+										fontSize: 14,
+										fontFamily: "var(--gf-font-ui)",
+									}}
+								>
+									No approved sounds for this channel yet — upload one above.
+								</p>
+							)}
+					</>
+				)}
 			</div>
 
 			{/* ── Floating dock (appears on selection) ── */}
@@ -1207,18 +1579,29 @@ export function SearchScreen({
 							borderRadius: 8,
 							overflow: "hidden",
 							flex: "0 0 auto",
+							display: "flex",
+							alignItems: "center",
+							justifyContent: "center",
+							background: "rgba(255,255,255,0.08)",
+							fontSize: 11,
+							fontFamily: "var(--gf-font-mono)",
+							letterSpacing: "0.06em",
 						}}
 					>
-						<img
-							src={selectedImage.previewUrl ?? selectedImage.gifUrl}
-							alt={selectedImage.title}
-							style={{
-								width: "100%",
-								height: "100%",
-								objectFit: "cover",
-								display: "block",
-							}}
-						/>
+						{selectedImage.source === "sound" ? (
+							"SND"
+						) : (
+							<img
+								src={selectedImage.previewUrl ?? selectedImage.gifUrl}
+								alt={selectedImage.title}
+								style={{
+									width: "100%",
+									height: "100%",
+									objectFit: "cover",
+									display: "block",
+								}}
+							/>
+						)}
 					</div>
 
 					{/* Title + meta */}
@@ -1247,7 +1630,7 @@ export function SearchScreen({
 								letterSpacing: "0.02em",
 							}}
 						>
-							{selectedImage.source === "giphy" ? "giphy" : "custom"} ·{" "}
+							{selectedImage.source} ·{" "}
 							{String(selectedImage.id).slice(0, 12)}
 						</div>
 					</div>
@@ -1294,8 +1677,9 @@ export function SearchScreen({
 						}}
 						disabled={
 							isSending ||
-							(selectedImage.source === "giphy" && !canUseGiphy) ||
-							(selectedImage.source === "upload" && !canUseCustomUploads)
+							(selectedImage.source === "giphy" && !canSendGiphy) ||
+							(selectedImage.source === "upload" && !canUseCustomUploads) ||
+							(selectedImage.source === "sound" && !canUseSounds)
 						}
 						onClick={handleSend}
 					>

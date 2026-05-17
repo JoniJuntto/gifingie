@@ -15,6 +15,36 @@ import {
 } from "./constants";
 import { createSignedDisplayUrl } from "./uploads";
 
+export function buildOverlayAllowedSourceFilters(profile: {
+	allowGifSubmissions: boolean;
+	allowSoundSubmissions: boolean;
+}) {
+	const allowedSourceFilters = [];
+
+	if (profile.allowGifSubmissions) {
+		allowedSourceFilters.push(
+			or(
+				eq(gifSubmissions.source, "giphy"),
+				and(
+					eq(gifSubmissions.source, "upload"),
+					isNotNull(gifSubmissions.uploadedAt),
+				),
+			),
+		);
+	}
+
+	if (profile.allowSoundSubmissions) {
+		allowedSourceFilters.push(
+			and(
+				eq(gifSubmissions.source, "sound"),
+				isNotNull(gifSubmissions.uploadedAt),
+			),
+		);
+	}
+
+	return allowedSourceFilters;
+}
+
 export async function getOverlayGifs(overlayToken: string, after?: number) {
 	const [profile] = await db
 		.select()
@@ -31,14 +61,32 @@ export async function getOverlayGifs(overlayToken: string, after?: number) {
 		return null;
 	}
 
+	const allowedSourceFilters = buildOverlayAllowedSourceFilters(profile);
+
+	if (allowedSourceFilters.length === 0) {
+		return {
+			gifs: [],
+			settings: {
+				gifDisplaySeconds:
+					profile.gifDisplaySeconds ?? OVERLAY_DISPLAY_SECONDS,
+				overlayGifXPercent:
+					profile.overlayGifXPercent ?? DEFAULT_OVERLAY_GIF_X_PERCENT,
+				overlayGifYPercent:
+					profile.overlayGifYPercent ?? DEFAULT_OVERLAY_GIF_Y_PERCENT,
+				overlayGifWidthPercent:
+					profile.overlayGifWidthPercent ?? DEFAULT_OVERLAY_GIF_WIDTH_PERCENT,
+				overlayGifHeightPercent:
+					profile.overlayGifHeightPercent ??
+					DEFAULT_OVERLAY_GIF_HEIGHT_PERCENT,
+			},
+		};
+	}
+
 	const filters = [
 		eq(gifSubmissions.streamerProfileId, profile.id),
 		isNull(gifSubmissions.displayedAt),
 		eq(gifSubmissions.moderationStatus, "approved"),
-		or(
-			eq(gifSubmissions.source, "giphy"),
-			isNotNull(gifSubmissions.uploadedAt),
-		),
+		or(...allowedSourceFilters),
 	];
 
 	if (typeof after === "number") {
@@ -62,6 +110,7 @@ export async function getOverlayGifs(overlayToken: string, after?: number) {
 			title: gifSubmissions.title,
 			caption: gifSubmissions.caption,
 			s3Key: gifSubmissions.s3Key,
+			durationMs: gifSubmissions.durationMs,
 			createdAt: gifSubmissions.createdAt,
 			displayedAt: gifSubmissions.displayedAt,
 		})
@@ -71,19 +120,25 @@ export async function getOverlayGifs(overlayToken: string, after?: number) {
 		.limit(25);
 
 	const visibleGifs = await Promise.all(
-		gifs.map(async (gif) => ({
-			id: gif.id,
-			giphyId: gif.giphyId,
-			gifUrl:
-				gif.source === "upload" && gif.s3Key
+		gifs.map(async (gif) => {
+			const mediaUrl =
+				(gif.source === "upload" || gif.source === "sound") && gif.s3Key
 					? await createSignedDisplayUrl(gif.s3Key)
-					: (gif.gifUrl ?? ""),
-			previewUrl: gif.previewUrl,
-			title: gif.title,
-			caption: gif.caption,
-			createdAt: gif.createdAt,
-			displayedAt: gif.displayedAt,
-		})),
+					: (gif.gifUrl ?? "");
+
+			return {
+				id: gif.id,
+				source: gif.source,
+				giphyId: gif.giphyId,
+				gifUrl: mediaUrl,
+				previewUrl: gif.previewUrl,
+				title: gif.title,
+				caption: gif.caption,
+				durationMs: gif.durationMs,
+				createdAt: gif.createdAt,
+				displayedAt: gif.displayedAt,
+			};
+		}),
 	);
 
 	return {

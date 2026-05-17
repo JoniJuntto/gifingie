@@ -1,5 +1,5 @@
 import { db } from "@my-better-t-app/db";
-import { account } from "@my-better-t-app/db/schema/auth";
+import { account, user } from "@my-better-t-app/db/schema/auth";
 import {
 	gifSubmissions,
 	streamerProfiles,
@@ -11,6 +11,7 @@ import { z } from "zod";
 import { protectedProcedure, router } from "../index";
 import { OVERLAY_BACKLOG_LIMIT } from "../services/constants";
 import { overlaySettingsInputSchema } from "../services/overlay-settings";
+import { viewerAccessLevelSchema } from "../services/viewer-access-schema";
 import { createOverlayToken } from "../services/tokens";
 import { getTwitchUserById } from "../services/twitch";
 import { createSignedDisplayUrl } from "../services/uploads";
@@ -57,7 +58,7 @@ async function assertBacklogAvailable(streamerProfileId: string) {
 
 async function withDisplayUrls<
 	T extends {
-		source: "giphy" | "upload";
+		source: "giphy" | "upload" | "sound";
 		gifUrl: string | null;
 		previewUrl: string | null;
 		s3Key: string | null;
@@ -66,7 +67,8 @@ async function withDisplayUrls<
 	return Promise.all(
 		submissions.map(async (submission) => {
 			const signedUrl =
-				submission.source === "upload" && submission.s3Key
+				(submission.source === "upload" || submission.source === "sound") &&
+				submission.s3Key
 					? await createSignedDisplayUrl(submission.s3Key)
 					: null;
 
@@ -172,6 +174,10 @@ export const streamerRouter = router({
 			z.object({
 				moderateGiphySubmissions: z.boolean(),
 				allowCustomUploads: z.boolean(),
+				allowGifSubmissions: z.boolean(),
+				allowSoundSubmissions: z.boolean(),
+				giphyAccess: viewerAccessLevelSchema,
+				uploadAccess: viewerAccessLevelSchema,
 			}),
 		)
 		.mutation(async ({ ctx, input }) => {
@@ -180,6 +186,10 @@ export const streamerRouter = router({
 				.set({
 					moderateGiphySubmissions: input.moderateGiphySubmissions,
 					allowCustomUploads: input.allowCustomUploads,
+					allowGifSubmissions: input.allowGifSubmissions,
+					allowSoundSubmissions: input.allowSoundSubmissions,
+					giphyAccess: input.giphyAccess,
+					uploadAccess: input.uploadAccess,
 					updatedAt: new Date(),
 				})
 				.where(eq(streamerProfiles.userId, ctx.session.user.id))
@@ -323,6 +333,7 @@ export const streamerRouter = router({
 					byteSize: gifSubmissions.byteSize,
 					originalFilename: gifSubmissions.originalFilename,
 					uploadedAt: gifSubmissions.uploadedAt,
+					durationMs: gifSubmissions.durationMs,
 				})
 				.from(gifSubmissions)
 				.where(
@@ -360,6 +371,7 @@ export const streamerRouter = router({
 					byteSize: original.byteSize,
 					originalFilename: original.originalFilename,
 					uploadedAt: original.uploadedAt,
+					durationMs: original.durationMs,
 					displayedAt: null,
 				})
 				.returning();
@@ -388,8 +400,10 @@ export const streamerRouter = router({
 				moderationStatus: gifSubmissions.moderationStatus,
 				displayedAt: gifSubmissions.displayedAt,
 				createdAt: gifSubmissions.createdAt,
+				senderName: user.name,
 			})
 			.from(gifSubmissions)
+			.leftJoin(user, eq(gifSubmissions.viewerUserId, user.id))
 			.where(eq(gifSubmissions.streamerProfileId, profile.id))
 			.orderBy(desc(gifSubmissions.createdAt))
 			.limit(12);

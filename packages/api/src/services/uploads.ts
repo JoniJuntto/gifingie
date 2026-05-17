@@ -7,9 +7,15 @@ import {
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { env } from "@my-better-t-app/env/server";
 
-import { ALLOWED_UPLOAD_CONTENT_TYPES, MAX_UPLOAD_BYTES } from "./constants";
+import {
+	ALLOWED_SOUND_CONTENT_TYPES,
+	ALLOWED_UPLOAD_CONTENT_TYPES,
+	MAX_SOUND_BYTES,
+	MAX_UPLOAD_BYTES,
+} from "./constants";
 
-type UploadContentType = (typeof ALLOWED_UPLOAD_CONTENT_TYPES)[number];
+type ImageUploadContentType = (typeof ALLOWED_UPLOAD_CONTENT_TYPES)[number];
+type SoundUploadContentType = (typeof ALLOWED_SOUND_CONTENT_TYPES)[number];
 
 let s3Client: S3Client | null = null;
 
@@ -63,19 +69,34 @@ function getS3Client() {
 	return s3Client;
 }
 
-export function isAllowedUploadContentType(
+export function isAllowedImageUploadContentType(
 	contentType: string,
-): contentType is UploadContentType {
+): contentType is ImageUploadContentType {
 	return ALLOWED_UPLOAD_CONTENT_TYPES.includes(
-		contentType as UploadContentType,
+		contentType as ImageUploadContentType,
 	);
 }
 
-export function validateUploadMetadata(input: {
+export function isAllowedSoundUploadContentType(
+	contentType: string,
+): contentType is SoundUploadContentType {
+	return ALLOWED_SOUND_CONTENT_TYPES.includes(
+		contentType as SoundUploadContentType,
+	);
+}
+
+/** @deprecated Use validateImageUploadMetadata */
+export function isAllowedUploadContentType(
+	contentType: string,
+): contentType is ImageUploadContentType {
+	return isAllowedImageUploadContentType(contentType);
+}
+
+export function validateImageUploadMetadata(input: {
 	contentType: string;
 	byteSize: number;
 }) {
-	if (!isAllowedUploadContentType(input.contentType)) {
+	if (!isAllowedImageUploadContentType(input.contentType)) {
 		return "Unsupported image type.";
 	}
 
@@ -88,6 +109,33 @@ export function validateUploadMetadata(input: {
 	}
 
 	return null;
+}
+
+export function validateSoundUploadMetadata(input: {
+	contentType: string;
+	byteSize: number;
+}) {
+	if (!isAllowedSoundUploadContentType(input.contentType)) {
+		return "Unsupported audio type.";
+	}
+
+	if (
+		!Number.isSafeInteger(input.byteSize) ||
+		input.byteSize <= 0 ||
+		input.byteSize > MAX_SOUND_BYTES
+	) {
+		return "Upload must be an audio file up to 5 MB.";
+	}
+
+	return null;
+}
+
+/** @deprecated Use validateImageUploadMetadata */
+export function validateUploadMetadata(input: {
+	contentType: string;
+	byteSize: number;
+}) {
+	return validateImageUploadMetadata(input);
 }
 
 export function createUploadObjectKey(input: {

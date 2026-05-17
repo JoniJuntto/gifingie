@@ -23,6 +23,63 @@ export const Route = createFileRoute("/streamer")({
 	component: RouteComponent,
 });
 
+function submissionSourceLabel(source: string) {
+	if (source === "upload") return "Custom upload";
+	if (source === "sound") return "Sound";
+	return "GIPHY";
+}
+
+function SubmissionThumbnail({
+	source,
+	previewUrl,
+	gifUrl,
+	title,
+	width,
+	height,
+}: {
+	source: string;
+	previewUrl?: string | null;
+	gifUrl?: string | null;
+	title: string;
+	width: number;
+	height: number;
+}) {
+	if (source === "sound") {
+		return (
+			<div
+				style={{
+					width,
+					height,
+					borderRadius: 3,
+					background: "var(--gf-t2)",
+					display: "flex",
+					alignItems: "center",
+					justifyContent: "center",
+					fontFamily: "var(--gf-font-mono)",
+					fontSize: 10,
+					letterSpacing: "0.08em",
+					color: "var(--gf-muted)",
+				}}
+			>
+				SND
+			</div>
+		);
+	}
+
+	return (
+		<img
+			src={previewUrl ?? gifUrl ?? ""}
+			alt={title}
+			style={{
+				width,
+				height,
+				objectFit: "cover",
+				borderRadius: 3,
+			}}
+		/>
+	);
+}
+
 function BigStat({
 	label,
 	value,
@@ -484,15 +541,13 @@ function RouteComponent() {
 											borderBottom: "1px solid var(--gf-hl)",
 										}}
 									>
-										<img
-											src={sub.previewUrl ?? sub.gifUrl}
-											alt={sub.title}
-											style={{
-												width: 64,
-												height: 40,
-												objectFit: "cover",
-												borderRadius: 3,
-											}}
+										<SubmissionThumbnail
+											source={sub.source}
+											previewUrl={sub.previewUrl}
+											gifUrl={sub.gifUrl}
+											title={sub.title}
+											width={64}
+											height={40}
 										/>
 										<div style={{ minWidth: 0 }}>
 											<div
@@ -515,7 +570,7 @@ function RouteComponent() {
 													fontFamily: "var(--gf-font-mono)",
 												}}
 											>
-												{sub.source === "upload" ? "Custom upload" : "GIPHY"}
+												{submissionSourceLabel(sub.source)}
 											</div>
 											{sub.caption && (
 												<div
@@ -637,15 +692,13 @@ function RouteComponent() {
 													: "none",
 										}}
 									>
-										<img
-											src={sub.previewUrl ?? sub.gifUrl}
-											alt={sub.title}
-											style={{
-												width: 52,
-												height: 34,
-												objectFit: "cover",
-												borderRadius: 3,
-											}}
+										<SubmissionThumbnail
+											source={sub.source}
+											previewUrl={sub.previewUrl}
+											gifUrl={sub.gifUrl}
+											title={sub.title}
+											width={52}
+											height={34}
 										/>
 										<div style={{ minWidth: 0 }}>
 											<div
@@ -669,7 +722,10 @@ function RouteComponent() {
 													marginTop: 2,
 												}}
 											>
-												{sub.source === "upload" ? "upload" : "giphy"}
+												{sub.source}
+												{sub.senderName && (
+													<span style={{ marginLeft: 6 }}>· {sub.senderName}</span>
+												)}
 											</div>
 											{sub.caption && (
 												<div

@@ -44,7 +44,7 @@ export function captionRequiresReview(caption: string | null) {
 
 export function resolveSubmissionModerationStatus(input: {
 	caption: string | null;
-	source: "giphy" | "upload";
+	source: "giphy" | "upload" | "sound";
 	moderateGiphySubmissions: boolean;
 	isNewUpload?: boolean;
 }) {
@@ -52,7 +52,10 @@ export function resolveSubmissionModerationStatus(input: {
 		return "pending" as const;
 	}
 
-	if (input.source === "upload" && input.isNewUpload) {
+	if (
+		(input.source === "upload" || input.source === "sound") &&
+		input.isNewUpload
+	) {
 		return "pending" as const;
 	}
 

@@ -32,6 +32,46 @@ const DEFAULT_OVERLAY_LAYOUT: OverlayLayout = {
 	overlayGifHeightPercent: 22,
 };
 
+type ViewerAccessLevel = "everyone" | "followers" | "subscribers";
+
+const VIEWER_ACCESS_OPTIONS: { value: ViewerAccessLevel; label: string }[] = [
+	{ value: "everyone", label: "Everyone" },
+	{ value: "followers", label: "Followers" },
+	{ value: "subscribers", label: "Subscribers" },
+];
+
+const TWITCH_SUBSCRIPTIONS_SCOPE = "channel:read:subscriptions";
+
+function moderationSettingsInput(
+	profile: {
+		moderateGiphySubmissions?: boolean;
+		allowCustomUploads?: boolean;
+		allowGifSubmissions?: boolean;
+		allowSoundSubmissions?: boolean;
+		giphyAccess?: ViewerAccessLevel;
+		uploadAccess?: ViewerAccessLevel;
+	} | null
+	| undefined,
+	overrides: Partial<{
+		moderateGiphySubmissions: boolean;
+		allowCustomUploads: boolean;
+		allowGifSubmissions: boolean;
+		allowSoundSubmissions: boolean;
+		giphyAccess: ViewerAccessLevel;
+		uploadAccess: ViewerAccessLevel;
+	}> = {},
+) {
+	return {
+		moderateGiphySubmissions: profile?.moderateGiphySubmissions ?? false,
+		allowCustomUploads: profile?.allowCustomUploads ?? false,
+		allowGifSubmissions: profile?.allowGifSubmissions ?? true,
+		allowSoundSubmissions: profile?.allowSoundSubmissions ?? true,
+		giphyAccess: profile?.giphyAccess ?? "everyone",
+		uploadAccess: profile?.uploadAccess ?? "everyone",
+		...overrides,
+	};
+}
+
 const NAV_ITEMS: { id: NavSection; label: string }[] = [
 	{ id: "role", label: "Role & landing" },
 	{ id: "channel", label: "Streamer channel" },
@@ -374,6 +414,21 @@ function RouteComponent() {
 	}, [me.data?.streamerProfile]);
 
 	const profile = me.data?.streamerProfile;
+	const needsSubscriptionScopeReconnect =
+		profile?.giphyAccess === "subscribers" ||
+		profile?.uploadAccess === "subscribers";
+
+	const reconnectTwitchForSubscriptions = () => {
+		authClient.signIn.social({
+			provider: "twitch",
+			callbackURL: `${window.location.origin}/settings`,
+			scopes: [
+				"user:read:moderated_channels",
+				TWITCH_SUBSCRIPTIONS_SCOPE,
+			],
+		});
+	};
+
 	const shareUrl = profile
 		? `${window.location.origin}/s/${profile.twitchChannelLogin}`
 		: "";
@@ -879,12 +934,12 @@ function RouteComponent() {
 											className="gf-btn sm outline"
 											disabled={!profile || updateModerationSettings.isPending}
 											onClick={() =>
-												updateModerationSettings.mutate({
-													moderateGiphySubmissions:
-														!profile?.moderateGiphySubmissions,
-													allowCustomUploads:
-														profile?.allowCustomUploads ?? false,
-												})
+												updateModerationSettings.mutate(
+													moderationSettingsInput(profile, {
+														moderateGiphySubmissions:
+															!profile?.moderateGiphySubmissions,
+													}),
+												)
 											}
 										>
 											{profile?.moderateGiphySubmissions ? "Disable" : "Enable"}
@@ -916,17 +971,161 @@ function RouteComponent() {
 											className="gf-btn sm outline"
 											disabled={!profile || updateModerationSettings.isPending}
 											onClick={() =>
-												updateModerationSettings.mutate({
-													moderateGiphySubmissions:
-														profile?.moderateGiphySubmissions ?? false,
-													allowCustomUploads: !profile?.allowCustomUploads,
-												})
+												updateModerationSettings.mutate(
+													moderationSettingsInput(profile, {
+														allowCustomUploads: !profile?.allowCustomUploads,
+													}),
+												)
 											}
 										>
 											{profile?.allowCustomUploads ? "Disable" : "Enable"}
 										</button>
 									</div>
 								</SettingRow>
+								<SettingRow
+									title="Allow GIF submissions"
+									sub="When disabled, viewers cannot send GIPHY picks or custom image uploads."
+								>
+									<div
+										style={{
+											display: "flex",
+											alignItems: "center",
+											gap: 14,
+										}}
+									>
+										<span
+											style={{
+												fontSize: 13,
+												color: "var(--gf-muted)",
+												fontFamily: "var(--gf-font-ui)",
+											}}
+										>
+											{profile?.allowGifSubmissions !== false
+												? "Enabled"
+												: "Disabled"}
+										</span>
+										<button
+											type="button"
+											className="gf-btn sm outline"
+											disabled={!profile || updateModerationSettings.isPending}
+											onClick={() =>
+												updateModerationSettings.mutate(
+													moderationSettingsInput(profile, {
+														allowGifSubmissions:
+															profile?.allowGifSubmissions === false,
+													}),
+												)
+											}
+										>
+											{profile?.allowGifSubmissions !== false
+												? "Disable"
+												: "Enable"}
+										</button>
+									</div>
+								</SettingRow>
+								<SettingRow
+									title="Allow sound uploads"
+									sub="When disabled, viewers cannot upload or resend sounds. Enable “Control audio via OBS” on your browser source so sounds reach the stream."
+								>
+									<div
+										style={{
+											display: "flex",
+											alignItems: "center",
+											gap: 14,
+										}}
+									>
+										<span
+											style={{
+												fontSize: 13,
+												color: "var(--gf-muted)",
+												fontFamily: "var(--gf-font-ui)",
+											}}
+										>
+											{profile?.allowSoundSubmissions !== false
+												? "Enabled"
+												: "Disabled"}
+										</span>
+										<button
+											type="button"
+											className="gf-btn sm outline"
+											disabled={!profile || updateModerationSettings.isPending}
+											onClick={() =>
+												updateModerationSettings.mutate(
+													moderationSettingsInput(profile, {
+														allowSoundSubmissions:
+															profile?.allowSoundSubmissions === false,
+													}),
+												)
+											}
+										>
+											{profile?.allowSoundSubmissions !== false
+												? "Disable"
+												: "Enable"}
+										</button>
+									</div>
+								</SettingRow>
+								<SettingRow
+									title="Who can send GIPHY GIFs"
+									sub='Anonymous viewers can send only when set to "Everyone". Followers and subscribers require Twitch sign-in.'
+								>
+									<select
+										className="gf-input boxed"
+										disabled={!profile || updateModerationSettings.isPending}
+										value={profile?.giphyAccess ?? "everyone"}
+										onChange={(event) =>
+											updateModerationSettings.mutate(
+												moderationSettingsInput(profile, {
+													giphyAccess: event.target
+														.value as ViewerAccessLevel,
+												}),
+											)
+										}
+									>
+										{VIEWER_ACCESS_OPTIONS.map((option) => (
+											<option key={option.value} value={option.value}>
+												{option.label}
+											</option>
+										))}
+									</select>
+								</SettingRow>
+								<SettingRow
+									title="Who can upload custom images"
+									sub="Requires custom uploads to be enabled. Uploads always need Twitch sign-in."
+								>
+									<select
+										className="gf-input boxed"
+										disabled={!profile || updateModerationSettings.isPending}
+										value={profile?.uploadAccess ?? "everyone"}
+										onChange={(event) =>
+											updateModerationSettings.mutate(
+												moderationSettingsInput(profile, {
+													uploadAccess: event.target
+														.value as ViewerAccessLevel,
+												}),
+											)
+										}
+									>
+										{VIEWER_ACCESS_OPTIONS.map((option) => (
+											<option key={option.value} value={option.value}>
+												{option.label}
+											</option>
+										))}
+									</select>
+								</SettingRow>
+								{needsSubscriptionScopeReconnect && (
+									<SettingRow
+										title="Twitch reconnect required"
+										sub="Subscriber-only access needs the channel:read:subscriptions scope on your Twitch account."
+									>
+										<button
+											type="button"
+											className="gf-btn sm"
+											onClick={reconnectTwitchForSubscriptions}
+										>
+											Reconnect Twitch
+										</button>
+									</SettingRow>
+								)}
 							</div>
 						</>
 					)}

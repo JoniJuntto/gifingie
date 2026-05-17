@@ -19,7 +19,10 @@ export function createAuth() {
 			twitch: {
 				clientId: env.TWITCH_CLIENT_ID,
 				clientSecret: env.TWITCH_CLIENT_SECRET,
-				scope: ["user:read:moderated_channels"],
+				scope: [
+					"user:read:moderated_channels",
+					"channel:read:subscriptions",
+				],
 			},
 		},
 		emailAndPassword: {

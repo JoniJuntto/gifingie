@@ -135,7 +135,7 @@ async function assertCanModerateProfile(input: {
 
 async function withDisplayUrls<
 	T extends {
-		source: "giphy" | "upload";
+		source: "giphy" | "upload" | "sound";
 		gifUrl: string | null;
 		previewUrl: string | null;
 		s3Key: string | null;
@@ -144,7 +144,8 @@ async function withDisplayUrls<
 	return Promise.all(
 		submissions.map(async (submission) => {
 			const signedUrl =
-				submission.source === "upload" && submission.s3Key
+				(submission.source === "upload" || submission.source === "sound") &&
+				submission.s3Key
 					? await createSignedDisplayUrl(submission.s3Key)
 					: null;
 

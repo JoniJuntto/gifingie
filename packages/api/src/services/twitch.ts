@@ -146,3 +146,66 @@ export async function getModeratedChannelsForUser(input: {
 
 	return channels;
 }
+
+export async function isChannelFollower(input: {
+	broadcasterId: string;
+	viewerId: string;
+	accessToken: string;
+}) {
+	const url = new URL("https://api.twitch.tv/helix/channels/followers");
+	url.searchParams.set("broadcaster_id", input.broadcasterId);
+	url.searchParams.set("user_id", input.viewerId);
+	url.searchParams.set("first", "1");
+
+	const response = await fetch(url, {
+		headers: {
+			Authorization: `Bearer ${input.accessToken}`,
+			"Client-Id": env.TWITCH_CLIENT_ID,
+		},
+	});
+
+	if (!response.ok) {
+		throw new Error(
+			`Could not verify channel follower status: ${response.status}`,
+		);
+	}
+
+	const body = (await response.json()) as {
+		data: { user_id: string }[];
+	};
+
+	return body.data.length > 0;
+}
+
+export async function isChannelSubscriber(input: {
+	broadcasterId: string;
+	viewerId: string;
+	accessToken: string;
+}) {
+	const url = new URL("https://api.twitch.tv/helix/subscriptions/user");
+	url.searchParams.set("broadcaster_id", input.broadcasterId);
+	url.searchParams.set("user_id", input.viewerId);
+
+	const response = await fetch(url, {
+		headers: {
+			Authorization: `Bearer ${input.accessToken}`,
+			"Client-Id": env.TWITCH_CLIENT_ID,
+		},
+	});
+
+	if (response.status === 404) {
+		return false;
+	}
+
+	if (!response.ok) {
+		throw new Error(
+			`Could not verify channel subscriber status: ${response.status}`,
+		);
+	}
+
+	const body = (await response.json()) as {
+		data: { user_id: string }[];
+	};
+
+	return body.data.length > 0;
+}
