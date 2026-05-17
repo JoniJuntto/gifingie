@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { EyeIcon, MonitorIcon, ArrowRightIcon } from "lucide-react";
+import { ArrowRightIcon, EyeIcon, MonitorIcon } from "lucide-react";
 import { useState } from "react";
 
 import { appUrl, authClient } from "@/lib/auth-client";
@@ -7,6 +7,8 @@ import { appUrl, authClient } from "@/lib/auth-client";
 export const Route = createFileRoute("/login")({
 	component: RouteComponent,
 });
+
+const TWITCH_MODERATION_SCOPES = ["user:read:moderated_channels"];
 
 type Role = "viewer" | "streamer";
 
@@ -90,6 +92,7 @@ function RouteComponent() {
 		authClient.signIn.social({
 			provider: "twitch",
 			callbackURL: appUrl("/choose-role"),
+			scopes: TWITCH_MODERATION_SCOPES,
 		});
 	};
 

@@ -1,5 +1,6 @@
 TODO:
-- [ ] Make it possible to resize and move the overlay gif positioning in the browser from settings page and it should be streamer specific, with live-previewq.
+- [x] Make it possible to resize and move the overlay gif positioning in the browser from settings page and it should be streamer specific, with live-previewq.
 - [ ] Make the /streamer page real-time
 - [ ] For custom uploaded gifs, make a new tab in viewer page and show all custom images sent to that channel and make it possible for other people to send that same image again :) 
 - [ ] Mods should be able to allow gifs 
+- [ ] Custom captions should be moderated somehow :D  

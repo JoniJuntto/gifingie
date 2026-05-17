@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as ViewerRouteImport } from './routes/viewer'
 import { Route as StreamerRouteImport } from './routes/streamer'
 import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as ModerationRouteImport } from './routes/moderation'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as ChooseRoleRouteImport } from './routes/choose-role'
@@ -32,6 +33,11 @@ const StreamerRoute = StreamerRouteImport.update({
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ModerationRoute = ModerationRouteImport.update({
+  id: '/moderation',
+  path: '/moderation',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -70,6 +76,7 @@ export interface FileRoutesByFullPath {
   '/choose-role': typeof ChooseRoleRoute
   '/dashboard': typeof DashboardRoute
   '/login': typeof LoginRoute
+  '/moderation': typeof ModerationRoute
   '/settings': typeof SettingsRoute
   '/streamer': typeof StreamerRoute
   '/viewer': typeof ViewerRoute
@@ -81,6 +88,7 @@ export interface FileRoutesByTo {
   '/choose-role': typeof ChooseRoleRoute
   '/dashboard': typeof DashboardRoute
   '/login': typeof LoginRoute
+  '/moderation': typeof ModerationRoute
   '/settings': typeof SettingsRoute
   '/streamer': typeof StreamerRoute
   '/viewer': typeof ViewerRoute
@@ -93,6 +101,7 @@ export interface FileRoutesById {
   '/choose-role': typeof ChooseRoleRoute
   '/dashboard': typeof DashboardRoute
   '/login': typeof LoginRoute
+  '/moderation': typeof ModerationRoute
   '/settings': typeof SettingsRoute
   '/streamer': typeof StreamerRoute
   '/viewer': typeof ViewerRoute
@@ -106,6 +115,7 @@ export interface FileRouteTypes {
     | '/choose-role'
     | '/dashboard'
     | '/login'
+    | '/moderation'
     | '/settings'
     | '/streamer'
     | '/viewer'
@@ -117,6 +127,7 @@ export interface FileRouteTypes {
     | '/choose-role'
     | '/dashboard'
     | '/login'
+    | '/moderation'
     | '/settings'
     | '/streamer'
     | '/viewer'
@@ -128,6 +139,7 @@ export interface FileRouteTypes {
     | '/choose-role'
     | '/dashboard'
     | '/login'
+    | '/moderation'
     | '/settings'
     | '/streamer'
     | '/viewer'
@@ -140,6 +152,7 @@ export interface RootRouteChildren {
   ChooseRoleRoute: typeof ChooseRoleRoute
   DashboardRoute: typeof DashboardRoute
   LoginRoute: typeof LoginRoute
+  ModerationRoute: typeof ModerationRoute
   SettingsRoute: typeof SettingsRoute
   StreamerRoute: typeof StreamerRoute
   ViewerRoute: typeof ViewerRoute
@@ -168,6 +181,13 @@ declare module '@tanstack/react-router' {
       path: '/settings'
       fullPath: '/settings'
       preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/moderation': {
+      id: '/moderation'
+      path: '/moderation'
+      fullPath: '/moderation'
+      preLoaderRoute: typeof ModerationRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -220,6 +240,7 @@ const rootRouteChildren: RootRouteChildren = {
   ChooseRoleRoute: ChooseRoleRoute,
   DashboardRoute: DashboardRoute,
   LoginRoute: LoginRoute,
+  ModerationRoute: ModerationRoute,
   SettingsRoute: SettingsRoute,
   StreamerRoute: StreamerRoute,
   ViewerRoute: ViewerRoute,

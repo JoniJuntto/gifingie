@@ -286,7 +286,10 @@ function OverlayPositionPreview({
 					<button
 						type="button"
 						aria-label="Resize overlay GIF preview"
-						onPointerDown={(event) => handlePointerDown(event, "resize")}
+						onPointerDown={(event) => {
+							event.stopPropagation();
+							handlePointerDown(event, "resize");
+						}}
 						disabled={disabled}
 						style={{
 							position: "absolute",
@@ -503,17 +506,15 @@ function RouteComponent() {
 												{
 													value: "streamer",
 													label: "Streamer",
-													Icon: MonitorIcon,
 												},
 											] as const
-										).map(({ value, label, Icon }) => (
+										).map(({ value, label}) => (
 											<button
 												key={value}
 												type="button"
-												className={`gf-seg-opt${me.data?.selectedRole === value ? "active" : ""}`}
+												className={`gf-seg-opt${me.data?.selectedRole === value ? "active" : ""} p-2`}
 												onClick={() => setRole.mutate({ role: value })}
 											>
-												<Icon size={12} />
 												{label}
 											</button>
 										))}

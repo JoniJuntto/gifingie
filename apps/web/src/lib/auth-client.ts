@@ -1,4 +1,5 @@
 import { env } from "@my-better-t-app/env/web";
+import { anonymousClient } from "better-auth/client/plugins";
 import { createAuthClient } from "better-auth/react";
 
 export function appUrl(path: string) {
@@ -7,4 +8,5 @@ export function appUrl(path: string) {
 
 export const authClient = createAuthClient({
 	baseURL: env.VITE_SERVER_URL,
+	plugins: [anonymousClient()],
 });

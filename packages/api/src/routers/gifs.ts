@@ -4,10 +4,10 @@ import {
 	streamerProfiles,
 } from "@my-better-t-app/db/schema/domain";
 import { TRPCError } from "@trpc/server";
-import { and, count, eq, gte, isNull, ne } from "drizzle-orm";
+import { and, count, desc, eq, gte, isNotNull, isNull, ne } from "drizzle-orm";
 import { z } from "zod";
 
-import { protectedProcedure, router } from "../index";
+import { protectedProcedure, router, sessionProcedure } from "../index";
 import { normalizeSubmissionCaption } from "../services/captions";
 import {
 	DUPLICATE_WINDOW_SECONDS,
@@ -18,6 +18,7 @@ import { giphyGifInputSchema, normalizeSubmittedGif } from "../services/giphy";
 import { isForcedLiveTwitchLogin } from "../services/live-overrides";
 import { isUserLive } from "../services/twitch";
 import {
+	createSignedDisplayUrl,
 	createSignedUploadUrl,
 	createUploadObjectKey,
 	validateUploadMetadata,
@@ -108,7 +109,58 @@ async function assertViewerRateLimit(input: {
 }
 
 export const gifsRouter = router({
-	submit: protectedProcedure
+	listCustomUploads: protectedProcedure
+		.input(z.object({ streamerProfileId: z.uuid() }))
+		.query(async ({ input }) => {
+			const profile = await getEnrolledProfile(input.streamerProfileId);
+			const submissions = await db
+				.select({
+					id: gifSubmissions.id,
+					gifUrl: gifSubmissions.gifUrl,
+					previewUrl: gifSubmissions.previewUrl,
+					title: gifSubmissions.title,
+					s3Key: gifSubmissions.s3Key,
+					contentType: gifSubmissions.contentType,
+					byteSize: gifSubmissions.byteSize,
+					originalFilename: gifSubmissions.originalFilename,
+					createdAt: gifSubmissions.createdAt,
+				})
+				.from(gifSubmissions)
+				.where(
+					and(
+						eq(gifSubmissions.streamerProfileId, profile.id),
+						eq(gifSubmissions.source, "upload"),
+						eq(gifSubmissions.moderationStatus, "approved"),
+						isNotNull(gifSubmissions.uploadedAt),
+						isNotNull(gifSubmissions.s3Key),
+					),
+				)
+				.orderBy(desc(gifSubmissions.createdAt))
+				.limit(100);
+
+			const uniqueSubmissions = submissions.filter((submission, index) => {
+				if (!submission.s3Key) return false;
+				return (
+					submissions.findIndex(
+						(candidate) => candidate.s3Key === submission.s3Key,
+					) === index
+				);
+			});
+
+			return Promise.all(
+				uniqueSubmissions.map(async (submission) => {
+					const displayUrl = await createSignedDisplayUrl(
+						submission.s3Key as string,
+					);
+					return {
+						...submission,
+						gifUrl: displayUrl,
+						previewUrl: displayUrl,
+					};
+				}),
+			);
+		}),
+	submit: sessionProcedure
 		.input(
 			z.object({
 				streamerProfileId: z.uuid(),
@@ -277,6 +329,77 @@ export const gifsRouter = router({
 				.update(gifSubmissions)
 				.set({ uploadedAt: new Date() })
 				.where(eq(gifSubmissions.id, input.submissionId))
+				.returning();
+
+			return submission;
+		}),
+	resendCustomUpload: protectedProcedure
+		.input(
+			z.object({
+				streamerProfileId: z.uuid(),
+				submissionId: z.number().int().positive(),
+				caption: z.string().max(500).optional(),
+			}),
+		)
+		.mutation(async ({ ctx, input }) => {
+			const profile = await getEnrolledProfile(input.streamerProfileId);
+			await assertStreamerLive(profile);
+			await assertBacklogAvailable(profile.id);
+			await assertViewerRateLimit({
+				streamerProfileId: profile.id,
+				viewerUserId: ctx.session.user.id,
+			});
+
+			const [original] = await db
+				.select({
+					source: gifSubmissions.source,
+					gifUrl: gifSubmissions.gifUrl,
+					previewUrl: gifSubmissions.previewUrl,
+					title: gifSubmissions.title,
+					s3Key: gifSubmissions.s3Key,
+					contentType: gifSubmissions.contentType,
+					byteSize: gifSubmissions.byteSize,
+					originalFilename: gifSubmissions.originalFilename,
+					uploadedAt: gifSubmissions.uploadedAt,
+				})
+				.from(gifSubmissions)
+				.where(
+					and(
+						eq(gifSubmissions.id, input.submissionId),
+						eq(gifSubmissions.streamerProfileId, profile.id),
+						eq(gifSubmissions.source, "upload"),
+						eq(gifSubmissions.moderationStatus, "approved"),
+						isNotNull(gifSubmissions.uploadedAt),
+						isNotNull(gifSubmissions.s3Key),
+					),
+				)
+				.limit(1);
+
+			if (!original?.s3Key || !original.uploadedAt) {
+				throw new TRPCError({
+					code: "NOT_FOUND",
+					message: "Approved custom upload not found.",
+				});
+			}
+
+			const [submission] = await db
+				.insert(gifSubmissions)
+				.values({
+					streamerProfileId: profile.id,
+					viewerUserId: ctx.session.user.id,
+					source: "upload",
+					moderationStatus: "approved",
+					gifUrl: original.gifUrl,
+					previewUrl: original.previewUrl,
+					title: original.title,
+					caption: normalizeSubmissionCaption(input.caption),
+					s3Key: original.s3Key,
+					contentType: original.contentType,
+					byteSize: original.byteSize,
+					originalFilename: original.originalFilename,
+					uploadedAt: original.uploadedAt,
+					displayedAt: null,
+				})
 				.returning();
 
 			return submission;

@@ -1,13 +1,12 @@
+import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
-import { MonitorIcon, MoonIcon, SunIcon } from "lucide-react";
+import { MoonIcon, ShieldCheckIcon, SunIcon } from "lucide-react";
 
-import { authClient } from "@/lib/auth-client";
 import { useTheme } from "@/components/theme-provider";
+import { authClient } from "@/lib/auth-client";
+import { trpc } from "@/utils/trpc";
 
-function Avatar({
-	name,
-	size = 28,
-}: { name: string; size?: number }) {
+function Avatar({ name, size = 28 }: { name: string; size?: number }) {
 	const initials = name
 		.split(/[\s_.@]/)
 		.filter(Boolean)
@@ -43,8 +42,20 @@ export default function Header() {
 	const navigate = useNavigate();
 	const { data: session } = authClient.useSession();
 	const { theme, setTheme } = useTheme();
+	const modChannels = useQuery({
+		...trpc.moderation.myChannels.queryOptions(),
+		enabled: Boolean(session && !session.user.isAnonymous),
+		retry: false,
+	});
+	const showModerationLink =
+		Boolean(modChannels.data?.needsReconnect) ||
+		(modChannels.data?.channels.length ?? 0) > 0 ||
+		location.pathname.startsWith("/moderation");
 
-	const activeLink = NAV_LINKS.find((l) =>
+	const navLinks = showModerationLink
+		? [...NAV_LINKS, { to: "/moderation", label: "Moderation" } as const]
+		: NAV_LINKS;
+	const activeLink = navLinks.find((l) =>
 		location.pathname.startsWith(l.to),
 	)?.to;
 
@@ -78,12 +89,15 @@ export default function Header() {
 			{/* Nav links */}
 			{session ? (
 				<div style={{ display: "flex", gap: 24 }}>
-					{NAV_LINKS.map(({ to, label }) => (
+					{navLinks.map(({ to, label }) => (
 						<Link
 							key={to}
 							to={to}
-							className={`gf-nav-link${activeLink === to ? " active" : ""}`}
+							className={
+								activeLink === to ? "active gf-nav-link" : "gf-nav-link"
+							}
 						>
+							{to === "/moderation" ? <ShieldCheckIcon size={13} /> : null}
 							{label}
 						</Link>
 					))}
@@ -106,11 +120,7 @@ export default function Header() {
 					title="Toggle theme"
 					style={{ padding: "4px" }}
 				>
-					{theme === "dark" ? (
-						<SunIcon size={15} />
-					) : (
-						<MoonIcon size={15} />
-					)}
+					{theme === "dark" ? <SunIcon size={15} /> : <MoonIcon size={15} />}
 				</button>
 
 				{session ? (
@@ -143,7 +153,7 @@ export default function Header() {
 						</button>
 					</div>
 				) : (
-					<Link to="/login" className="gf-btn outline sm">
+					<Link to="/login" className="gf-btn sm outline">
 						Sign in
 					</Link>
 				)}

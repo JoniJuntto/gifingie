@@ -3,6 +3,7 @@ import * as schema from "@my-better-t-app/db/schema/auth";
 import { env } from "@my-better-t-app/env/server";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
+import { anonymous } from "better-auth/plugins";
 
 export function createAuth() {
 	const db = createDb();
@@ -18,6 +19,7 @@ export function createAuth() {
 			twitch: {
 				clientId: env.TWITCH_CLIENT_ID,
 				clientSecret: env.TWITCH_CLIENT_SECRET,
+				scope: ["user:read:moderated_channels"],
 			},
 		},
 		emailAndPassword: {
@@ -32,7 +34,7 @@ export function createAuth() {
 				httpOnly: true,
 			},
 		},
-		plugins: [],
+		plugins: [anonymous()],
 	});
 }
 

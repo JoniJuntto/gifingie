@@ -18,6 +18,12 @@ type TwitchStream = {
 	thumbnailUrl: string | null;
 };
 
+type TwitchModeratedChannel = {
+	broadcasterId: string;
+	broadcasterLogin: string;
+	broadcasterName: string;
+};
+
 const auth = new TwitchAuth({
 	clientId: env.TWITCH_CLIENT_ID,
 	clientSecret: env.TWITCH_CLIENT_SECRET,
@@ -89,4 +95,54 @@ export async function getLiveStreamsByUserIds(ids: string[]) {
 export async function isUserLive(userId: string) {
 	const streams = await getLiveStreamsByUserIds([userId]);
 	return streams.length > 0;
+}
+
+export async function getModeratedChannelsForUser(input: {
+	userId: string;
+	accessToken: string;
+}) {
+	const channels: TwitchModeratedChannel[] = [];
+	let after: string | undefined;
+
+	do {
+		const url = new URL("https://api.twitch.tv/helix/moderation/channels");
+		url.searchParams.set("user_id", input.userId);
+		url.searchParams.set("first", "100");
+		if (after) {
+			url.searchParams.set("after", after);
+		}
+
+		const response = await fetch(url, {
+			headers: {
+				Authorization: `Bearer ${input.accessToken}`,
+				"Client-Id": env.TWITCH_CLIENT_ID,
+			},
+		});
+
+		if (!response.ok) {
+			throw new Error(
+				`Could not load moderated Twitch channels: ${response.status}`,
+			);
+		}
+
+		const body = (await response.json()) as {
+			data: {
+				broadcaster_id: string;
+				broadcaster_login: string;
+				broadcaster_name: string;
+			}[];
+			pagination?: { cursor?: string };
+		};
+
+		channels.push(
+			...body.data.map((channel) => ({
+				broadcasterId: channel.broadcaster_id,
+				broadcasterLogin: channel.broadcaster_login,
+				broadcasterName: channel.broadcaster_name,
+			})),
+		);
+		after = body.pagination?.cursor;
+	} while (after);
+
+	return channels;
 }

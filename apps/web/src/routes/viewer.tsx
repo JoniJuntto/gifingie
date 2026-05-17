@@ -6,8 +6,9 @@ import {
 	SearchIcon,
 	SendIcon,
 	UploadIcon,
+	XIcon,
 } from "lucide-react";
-import { useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { authClient } from "@/lib/auth-client";
@@ -16,7 +17,7 @@ import { queryClient, trpc, trpcClient } from "@/utils/trpc";
 export const Route = createFileRoute("/viewer")({
 	beforeLoad: async () => {
 		const session = await authClient.getSession();
-		if (!session.data) {
+		if (!session.data || session.data.user.isAnonymous) {
 			throw redirect({ to: "/login" });
 		}
 	},
@@ -160,16 +161,17 @@ function GifTile({
 			type="button"
 			onClick={onClick}
 			style={{
+				display: "block",
+				width: "100%",
 				position: "relative",
 				borderRadius: 4,
 				overflow: "hidden",
 				cursor: "pointer",
-				aspectRatio: "16/9",
 				outline: selected
 					? "2px solid var(--gf-accent)"
 					: "0 solid transparent",
 				outlineOffset: 2,
-				transition: "transform 0.12s, outline 0.12s",
+				transition: "outline 0.12s",
 				border: "none",
 				padding: 0,
 				background: "transparent",
@@ -178,12 +180,7 @@ function GifTile({
 			<img
 				src={url}
 				alt={title}
-				style={{
-					width: "100%",
-					height: "100%",
-					objectFit: "cover",
-					display: "block",
-				}}
+				style={{ width: "100%", height: "auto", display: "block" }}
 			/>
 		</button>
 	);
@@ -204,6 +201,19 @@ type GifResult = {
 	gifUrl: string;
 	previewUrl?: string | null;
 };
+
+type CustomUploadResult = {
+	id: number;
+	title: string;
+	gifUrl: string;
+	previewUrl?: string | null;
+	contentType?: string | null;
+	originalFilename?: string | null;
+};
+
+type SelectedImage =
+	| (GifResult & { source: "giphy" })
+	| (CustomUploadResult & { source: "upload" });
 
 const PICKER_SKELETON_KEYS = ["one", "two", "three", "four", "five", "six"];
 
@@ -478,14 +488,86 @@ export function SearchScreen({
 }) {
 	const [query, setQuery] = useState("");
 	const [searchQuery, setSearchQuery] = useState("");
-	const [selectedGif, setSelectedGif] = useState<GifResult | null>(null);
+	const [activeTab, setActiveTab] = useState<"giphy" | "custom">("giphy");
+	const [selectedImage, setSelectedImage] = useState<SelectedImage | null>(
+		null,
+	);
 	const [caption, setCaption] = useState("");
-	const [uploadFile, setUploadFile] = useState<File | null>(null);
 	const fileRef = useRef<HTMLInputElement>(null);
+	const searchRef = useRef<HTMLInputElement>(null);
+	const { data: session } = authClient.useSession();
+	const [sessionStatus, setSessionStatus] = useState<
+		"checking" | "ready" | "failed"
+	>("checking");
+
+	useEffect(() => {
+		let cancelled = false;
+
+		async function ensureSession() {
+			setSessionStatus("checking");
+			const existingSession = await authClient.getSession();
+			if (cancelled) return;
+
+			if (existingSession.data) {
+				setSessionStatus("ready");
+				return;
+			}
+
+			const anonymousSession = await authClient.signIn.anonymous();
+			if (cancelled) return;
+
+			if (anonymousSession.error) {
+				setSessionStatus("failed");
+				toast.error(
+					anonymousSession.error.message ??
+						"Could not start an anonymous session.",
+				);
+				return;
+			}
+
+			setSessionStatus("ready");
+		}
+
+		ensureSession().catch((error) => {
+			if (cancelled) return;
+			setSessionStatus("failed");
+			toast.error(
+				error instanceof Error
+					? error.message
+					: "Could not start an anonymous session.",
+			);
+		});
+
+		return () => {
+			cancelled = true;
+		};
+	}, []);
+
+	// ⌘K / Ctrl+K focuses the search input
+	useEffect(() => {
+		function onKey(e: KeyboardEvent) {
+			if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+				e.preventDefault();
+				searchRef.current?.focus();
+			}
+		}
+		window.addEventListener("keydown", onKey);
+		return () => window.removeEventListener("keydown", onKey);
+	}, []);
+
+	const canUseGiphy = sessionStatus === "ready";
+	const canUseCustomUploads = Boolean(session && !session.user.isAnonymous);
 
 	const giphy = useQuery({
 		...trpc.giphy.search.queryOptions({ query: searchQuery }),
-		enabled: searchQuery.length >= 2,
+		enabled: canUseGiphy && searchQuery.length >= 2,
+	});
+
+	const customUploads = useQuery({
+		...trpc.gifs.listCustomUploads.queryOptions({
+			streamerProfileId: streamer.id,
+		}),
+		enabled: canUseCustomUploads,
 	});
 
 	const submit = useMutation(
@@ -496,10 +578,23 @@ export function SearchScreen({
 						? "Sent for approval"
 						: "GIF sent to overlay",
 				);
-				setSelectedGif(null);
+				setSelectedImage(null);
 				setCaption("");
 				await queryClient.invalidateQueries();
 			},
+			onError: (error) => toast.error(error.message),
+		}),
+	);
+
+	const resendCustomUpload = useMutation(
+		trpc.gifs.resendCustomUpload.mutationOptions({
+			onSuccess: async () => {
+				toast.success("Custom image sent to overlay");
+				setSelectedImage(null);
+				setCaption("");
+				await queryClient.invalidateQueries();
+			},
+			onError: (error) => toast.error(error.message),
 		}),
 	);
 
@@ -522,7 +617,6 @@ export function SearchScreen({
 			});
 		},
 		onSuccess: async () => {
-			setUploadFile(null);
 			if (fileRef.current) fileRef.current.value = "";
 			toast.success("Sent for approval");
 			await queryClient.invalidateQueries();
@@ -531,275 +625,480 @@ export function SearchScreen({
 	});
 
 	const gifs: GifResult[] = giphy.data ?? [];
+	const uploads: CustomUploadResult[] = customUploads.data ?? [];
+	const isSending = submit.isPending || resendCustomUpload.isPending;
+
+	function selectTab(tab: "giphy" | "custom") {
+		setActiveTab(tab);
+		setSelectedImage(null);
+		setCaption("");
+	}
+
+	const handleSend = useCallback(() => {
+		if (!selectedImage) return;
+		if (selectedImage.source === "giphy") {
+			if (!canUseGiphy) {
+				toast.error("Anonymous access is still starting.");
+				return;
+			}
+			submit.mutate({
+				streamerProfileId: streamer.id,
+				caption,
+				gif: {
+					id: selectedImage.id,
+					title: selectedImage.title,
+					gifUrl: selectedImage.gifUrl,
+					previewUrl: selectedImage.previewUrl ?? undefined,
+				},
+			});
+			return;
+		}
+		if (!canUseCustomUploads) {
+			toast.error("Sign in with Twitch to use custom uploads.");
+			return;
+		}
+		resendCustomUpload.mutate({
+			streamerProfileId: streamer.id,
+			submissionId: selectedImage.id,
+			caption,
+		});
+	}, [
+		selectedImage,
+		canUseGiphy,
+		canUseCustomUploads,
+		submit,
+		resendCustomUpload,
+		streamer.id,
+		caption,
+	]);
 
 	return (
 		<div
 			className="gf-page"
 			style={{
+				position: "relative",
 				height: "100%",
 				overflow: "hidden",
 				display: "flex",
 				flexDirection: "column",
 			}}
 		>
-			{/* Breadcrumb row */}
-			<div
-				style={{
-					padding: "28px 40px 24px",
-					display: "flex",
-					alignItems: "center",
-					gap: 14,
-					flexShrink: 0,
-				}}
-			>
-				<button
-					type="button"
-					className="gf-btn ghost"
-					onClick={onBack}
-					style={{ fontSize: 13 }}
-				>
-					<ArrowLeftIcon size={14} />
-					Back
-				</button>
-				<span style={{ color: "var(--gf-muted-2)" }}>/</span>
-				<div className="gf-eyebrow">Step 02 / Send a GIF</div>
+			{/* ── Top header ── */}
+			<div style={{ padding: "28px 56px 0", flexShrink: 0 }}>
+				{/* Row 1: back · eyebrow · target pill */}
 				<div
 					style={{
-						marginLeft: "auto",
 						display: "flex",
 						alignItems: "center",
-						gap: 12,
+						gap: 14,
+						marginBottom: 32,
 					}}
 				>
-					<span
+					<button
+						type="button"
+						className="gf-btn ghost"
+						onClick={onBack}
+						style={{ fontSize: 13, gap: 6 }}
+					>
+						<ArrowLeftIcon size={14} />
+						Back
+					</button>
+					<span style={{ color: "var(--gf-muted-2)" }}>·</span>
+					<div className="gf-eyebrow">Send a GIF</div>
+
+					{/* Target pill */}
+					<div
 						style={{
+							marginLeft: "auto",
+							display: "flex",
+							alignItems: "center",
+							gap: 9,
+							padding: "5px 12px 5px 6px",
+							border: "1px solid var(--gf-hl)",
+							borderRadius: 999,
+						}}
+					>
+						<Avatar name={streamer.twitchDisplayName} size={22} />
+						<span
+							style={{
+								fontSize: 13,
+								color: "var(--gf-muted)",
+								fontFamily: "var(--gf-font-ui)",
+							}}
+						>
+							to
+						</span>
+						<span
+							style={{
+								fontSize: 14,
+								fontWeight: 500,
+								letterSpacing: "-0.02em",
+								color: "var(--gf-text)",
+								fontFamily: "var(--gf-font-ui)",
+							}}
+						>
+							{streamer.twitchDisplayName}
+						</span>
+						<span
+							style={{
+								display: "inline-flex",
+								alignItems: "center",
+								gap: 5,
+								paddingLeft: 10,
+								marginLeft: 2,
+								borderLeft: "1px solid var(--gf-hl)",
+								fontSize: 10,
+								fontWeight: 600,
+								letterSpacing: "0.14em",
+								textTransform: "uppercase",
+								color: "var(--gf-live)",
+								fontFamily: "var(--gf-font-ui)",
+							}}
+						>
+							<span
+								className="gf-dot live"
+								style={{ width: 6, height: 6 }}
+							/>
+							Live
+						</span>
+					</div>
+				</div>
+
+				{/* Row 2: tabs */}
+				<div
+					style={{
+						display: "flex",
+						gap: 28,
+						borderBottom: "1px solid var(--gf-hl)",
+					}}
+				>
+					{(
+						[
+							["giphy", "GIPHY", null],
+							["custom", "Custom uploads", uploads.length],
+						] as const
+					).map(([tab, label, count]) => (
+						<button
+							key={tab}
+							type="button"
+							className="gf-btn ghost"
+							style={{
+								padding: "14px 0",
+								fontSize: 14,
+								fontWeight: 500,
+								color:
+									activeTab === tab ? "var(--gf-text)" : "var(--gf-muted)",
+								borderBottom:
+									activeTab === tab
+										? "2px solid var(--gf-text)"
+										: "2px solid transparent",
+								marginBottom: -1,
+								letterSpacing: "-0.01em",
+								gap: 7,
+							}}
+							onClick={() => selectTab(tab)}
+						>
+							{label}
+							{count !== null && (
+								<span
+									style={{
+										fontFamily: "var(--gf-font-mono)",
+										fontSize: 11,
+										color: "var(--gf-muted-2)",
+									}}
+								>
+									{count}
+								</span>
+							)}
+						</button>
+					))}
+					{activeTab === "custom" && (
+						<button
+							type="button"
+							className="gf-btn ghost"
+							style={{ marginLeft: "auto", fontSize: 13 }}
+							disabled={!canUseCustomUploads || customUploads.isFetching}
+							onClick={() => customUploads.refetch()}
+						>
+							<RefreshCwIcon size={13} />
+							Refresh
+						</button>
+					)}
+				</div>
+
+				{/* Row 3 (GIPHY only): hero search input */}
+				{activeTab === "giphy" && (
+					<>
+						<form
+							onSubmit={(e) => {
+								e.preventDefault();
+								setSearchQuery(query.trim());
+							}}
+							style={{
+								display: "flex",
+								alignItems: "center",
+								gap: 20,
+								paddingBottom: 14,
+								borderBottom: "1.5px solid var(--gf-text)",
+								marginTop: 24,
+							}}
+						>
+							<SearchIcon
+								size={26}
+								color="var(--gf-text)"
+								strokeWidth={1.4}
+								style={{ flexShrink: 0 }}
+							/>
+							<input
+								ref={searchRef}
+								className="gf-input"
+								style={{
+									borderBottom: 0,
+									padding: 0,
+									fontSize: 44,
+									fontWeight: 300,
+									letterSpacing: "-0.035em",
+									height: 64,
+									lineHeight: 1,
+									fontFamily: "var(--gf-font-ui)",
+								}}
+								placeholder="What's the vibe?"
+								value={query}
+								disabled={!canUseGiphy}
+								onChange={(e) => setQuery(e.target.value)}
+							/>
+							<span
+								style={{
+									fontFamily: "var(--gf-font-mono)",
+									fontSize: 11,
+									color: "var(--gf-muted-2)",
+									letterSpacing: "0.04em",
+									flex: "0 0 auto",
+								}}
+							>
+								⌘ K
+							</span>
+						</form>
+
+						{sessionStatus === "failed" && (
+							<p
+								style={{
+									margin: "10px 0 0",
+									fontSize: 13,
+									color: "var(--gf-live)",
+									fontFamily: "var(--gf-font-ui)",
+								}}
+							>
+								Anonymous access could not be started. Refresh and try again.
+							</p>
+						)}
+
+						{/* Trending tags + upload-your-own */}
+						<div
+							style={{
+								marginTop: 14,
+								marginBottom: 2,
+								display: "flex",
+								alignItems: "center",
+								gap: 22,
+								fontSize: 13,
+								color: "var(--gf-muted)",
+								fontFamily: "var(--gf-font-ui)",
+							}}
+						>
+							<span
+								style={{ color: "var(--gf-text)", fontWeight: 500 }}
+							>
+								Trending
+							</span>
+							{["Pog", "GG", "Hype", "Sad", "Cute", "Cats"].map((t) => (
+								<button
+									key={t}
+									type="button"
+									className="gf-btn ghost"
+									style={{ fontSize: 13 }}
+									disabled={!canUseGiphy}
+									onClick={() => {
+										setQuery(t);
+										setSearchQuery(t);
+									}}
+								>
+									{t}
+								</button>
+							))}
+							<span
+								style={{
+									marginLeft: "auto",
+									display: "inline-flex",
+									alignItems: "center",
+									gap: 18,
+								}}
+							>
+								<label
+									style={{
+										display: "inline-flex",
+										alignItems: "center",
+										gap: 7,
+										color: "var(--gf-text)",
+										cursor:
+											canUseCustomUploads && !upload.isPending
+												? "pointer"
+												: "default",
+										fontSize: 13,
+										opacity:
+											canUseCustomUploads && !upload.isPending ? 1 : 0.45,
+									}}
+									title={
+										!canUseCustomUploads
+											? "Sign in with Twitch to upload"
+											: undefined
+									}
+								>
+									<UploadIcon size={13} />
+									{upload.isPending ? "Uploading…" : "Upload your own"}
+									<input
+										ref={fileRef}
+										type="file"
+										accept="image/jpeg,image/png,image/webp,image/gif"
+										style={{ display: "none" }}
+										disabled={!canUseCustomUploads || upload.isPending}
+										onChange={(e) => {
+											const file = e.target.files?.[0] ?? null;
+											if (!file) return;
+											if (file.size > 10 * 1024 * 1024) {
+												toast.error("Upload must be 10 MB or smaller.");
+												e.currentTarget.value = "";
+												return;
+											}
+											upload.mutate(file);
+										}}
+									/>
+								</label>
+								<span
+									style={{
+										fontSize: 11,
+										color: "var(--gf-muted-2)",
+										fontFamily: "var(--gf-font-mono)",
+										letterSpacing: "0.04em",
+									}}
+								>
+									Powered by GIPHY
+								</span>
+							</span>
+						</div>
+					</>
+				)}
+
+				{/* Custom tab description */}
+				{activeTab === "custom" && (
+					<div
+						style={{
+							paddingTop: 16,
+							paddingBottom: 4,
 							fontSize: 13,
 							color: "var(--gf-muted)",
 							fontFamily: "var(--gf-font-ui)",
 						}}
 					>
-						To
-					</span>
-					<Avatar name={streamer.twitchDisplayName} size={24} />
-					<span
-						style={{
-							fontSize: 15,
-							fontWeight: 500,
-							letterSpacing: "-0.02em",
-							fontFamily: "var(--gf-font-ui)",
-							color: "var(--gf-text)",
-						}}
-					>
-						{streamer.twitchDisplayName}
-					</span>
-					<span
-						style={{
-							display: "inline-flex",
-							alignItems: "center",
-							gap: 6,
-							fontSize: 11,
-							fontWeight: 600,
-							letterSpacing: "0.08em",
-							textTransform: "uppercase",
-							color: "var(--gf-live)",
-							fontFamily: "var(--gf-font-ui)",
-						}}
-					>
-						<span className="gf-dot live" />
-						Live
-					</span>
-				</div>
+						{canUseCustomUploads
+							? "Approved custom images for this channel — click to send again."
+							: "Sign in with Twitch to browse and send custom uploads."}
+					</div>
+				)}
 			</div>
 
-			{/* Search input */}
-			<div style={{ padding: "0 40px 20px", flexShrink: 0 }}>
-				<form
-					onSubmit={(e) => {
-						e.preventDefault();
-						setSearchQuery(query.trim());
-					}}
-					style={{
-						display: "flex",
-						alignItems: "center",
-						gap: 16,
-						borderBottom: "1px solid var(--gf-text)",
-					}}
-				>
-					<SearchIcon
-						size={20}
-						color="var(--gf-text)"
-						style={{ flexShrink: 0 }}
-					/>
-					<input
-						className="gf-input"
-						style={{
-							borderBottom: 0,
-							fontSize: 28,
-							fontWeight: 300,
-							letterSpacing: "-0.03em",
-							height: 56,
-							fontFamily: "var(--gf-font-ui)",
-						}}
-						placeholder="Search GIFs…"
-						value={query}
-						onChange={(e) => setQuery(e.target.value)}
-					/>
-					<button
-						type="submit"
-						className="gf-btn sm"
-						style={{ flexShrink: 0 }}
-						disabled={query.trim().length < 2 || giphy.isFetching}
-					>
-						{giphy.isFetching ? "Searching…" : "Search"}
-					</button>
-				</form>
-				<div
-					style={{
-						marginTop: 12,
-						display: "flex",
-						alignItems: "center",
-						gap: 20,
-						fontSize: 13,
-						color: "var(--gf-muted)",
-						fontFamily: "var(--gf-font-ui)",
-					}}
-				>
-					<span style={{ color: "var(--gf-text)", fontWeight: 500 }}>
-						Trending
-					</span>
-					{["Pog", "GG", "Hype", "Sad", "Cute", "Cats"].map((t) => (
-						<button
-							key={t}
-							type="button"
-							className="gf-btn ghost"
-							style={{ fontSize: 13 }}
-							onClick={() => {
-								setQuery(t);
-								setSearchQuery(t);
-							}}
-						>
-							{t}
-						</button>
-					))}
-					<span
-						style={{
-							marginLeft: "auto",
-							fontSize: 11,
-							color: "var(--gf-muted)",
-							fontFamily: "var(--gf-font-mono)",
-							letterSpacing: "0.04em",
-						}}
-					>
-						Search powered by GIPHY
-					</span>
-				</div>
-			</div>
-
-			{/* Body: gif grid + selection rail */}
+			{/* ── Masonry grid ── */}
 			<div
 				style={{
-					display: "grid",
-					gridTemplateColumns: "1fr 360px",
+					padding: "28px 56px 140px",
 					flex: 1,
-					minHeight: 0,
-					borderTop: "1px solid var(--gf-hl)",
+					overflowY: "auto",
 				}}
 			>
-				{/* GIF grid */}
-				<div
-					style={{
-						padding: "20px 28px 20px 40px",
-						overflowY: "auto",
-					}}
-				>
-					{/* Upload section */}
-					<div style={{ marginBottom: 20 }}>
-						<div className="gf-eyebrow" style={{ marginBottom: 10 }}>
-							Custom upload
-						</div>
-						<form
-							style={{ display: "flex", gap: 12, alignItems: "center" }}
-							onSubmit={(e) => {
-								e.preventDefault();
-								if (!uploadFile) return toast.error("Choose a file first.");
-								upload.mutate(uploadFile);
-							}}
-						>
-							<label
+				{/* GIPHY results */}
+				{activeTab === "giphy" && (
+					<>
+						{giphy.isFetching && (
+							<div
+								style={{ columnCount: 4, columnGap: 14 }}
+							>
+								{PICKER_SKELETON_KEYS.map((key) => (
+									<div
+										key={key}
+										style={{ breakInside: "avoid", marginBottom: 14 }}
+									>
+										<div
+											style={{
+												aspectRatio: "16/9",
+												borderRadius: 4,
+												background: "var(--gf-t2)",
+											}}
+										/>
+									</div>
+								))}
+							</div>
+						)}
+
+						{!giphy.isFetching && gifs.length > 0 && (
+							<div style={{ columnCount: 4, columnGap: 14 }}>
+								{gifs.map((gif) => (
+									<div
+										key={gif.id}
+										style={{ breakInside: "avoid", marginBottom: 14 }}
+									>
+										<GifTile
+											url={gif.previewUrl ?? gif.gifUrl}
+											title={gif.title}
+											selected={
+												selectedImage?.source === "giphy" &&
+												selectedImage.id === gif.id
+											}
+											onClick={() =>
+												setSelectedImage(
+													selectedImage?.source === "giphy" &&
+														selectedImage.id === gif.id
+														? null
+														: { ...gif, source: "giphy" },
+												)
+											}
+										/>
+									</div>
+								))}
+							</div>
+						)}
+
+						{!giphy.isFetching &&
+							searchQuery.length >= 2 &&
+							gifs.length === 0 && (
+								<p
+									style={{
+										color: "var(--gf-muted)",
+										fontSize: 14,
+										fontFamily: "var(--gf-font-ui)",
+									}}
+								>
+									No GIFs found for &ldquo;{searchQuery}&rdquo;.
+								</p>
+							)}
+
+						{!searchQuery && !giphy.isFetching && (
+							<p
 								style={{
-									flex: 1,
-									height: 36,
-									border: "1px solid var(--gf-hl2)",
-									borderRadius: 4,
-									display: "flex",
-									alignItems: "center",
-									gap: 10,
-									padding: "0 12px",
-									cursor: "pointer",
-									fontSize: 13,
-									color: "var(--gf-muted)",
+									color: "var(--gf-muted-2)",
+									fontSize: 14,
 									fontFamily: "var(--gf-font-ui)",
 								}}
 							>
-								<UploadIcon size={13} />
-								<input
-									ref={fileRef}
-									type="file"
-									accept="image/jpeg,image/png,image/webp,image/gif"
-									style={{ minWidth: 0, flex: 1, fontSize: 13 }}
-									disabled={upload.isPending}
-									onChange={(e) => {
-										const file = e.target.files?.[0] ?? null;
-										if (file && file.size > 10 * 1024 * 1024) {
-											toast.error("Upload must be 10 MB or smaller.");
-											e.currentTarget.value = "";
-											return setUploadFile(null);
-										}
-										setUploadFile(file);
-									}}
-								/>
-							</label>
-							<button
-								type="submit"
-								className="gf-btn sm primary"
-								disabled={!uploadFile || upload.isPending}
-							>
-								{upload.isPending ? "Uploading…" : "Send for approval"}
-							</button>
-						</form>
-					</div>
+								Type above to search, or pick a trending tag.
+							</p>
+						)}
+					</>
+				)}
 
-					<div className="gf-eyebrow" style={{ marginBottom: 12 }}>
-						{searchQuery
-							? `Results for "${searchQuery}"`
-							: "Search above to find GIFs"}
-					</div>
-
-					{gifs.length > 0 && (
-						<div
-							style={{
-								display: "grid",
-								gridTemplateColumns: "repeat(4, 1fr)",
-								gap: 10,
-							}}
-						>
-							{gifs.map((gif) => (
-								<GifTile
-									key={gif.id}
-									url={gif.previewUrl ?? gif.gifUrl}
-									title={gif.title}
-									selected={selectedGif?.id === gif.id}
-									onClick={() =>
-										setSelectedGif(selectedGif?.id === gif.id ? null : gif)
-									}
-								/>
-							))}
-						</div>
-					)}
-
-					{searchQuery.length >= 2 &&
-						!giphy.isFetching &&
-						gifs.length === 0 && (
+				{/* Custom uploads */}
+				{activeTab === "custom" && (
+					<>
+						{!canUseCustomUploads && (
 							<p
 								style={{
 									color: "var(--gf-muted)",
@@ -807,141 +1106,222 @@ export function SearchScreen({
 									fontFamily: "var(--gf-font-ui)",
 								}}
 							>
-								No GIFs found for &ldquo;{searchQuery}&rdquo;.
+								Sign in with Twitch to browse and send custom uploads.
 							</p>
 						)}
-				</div>
 
-				{/* Selection rail */}
-				<aside
-					style={{
-						borderLeft: "1px solid var(--gf-hl)",
-						padding: "20px 40px 24px 28px",
-						display: "flex",
-						flexDirection: "column",
-						gap: 18,
-						overflowY: "auto",
-					}}
-				>
-					<div className="gf-eyebrow">Selected</div>
-
-					{selectedGif ? (
-						<>
-							<img
-								src={selectedGif.previewUrl ?? selectedGif.gifUrl}
-								alt={selectedGif.title}
-								style={{
-									width: "100%",
-									aspectRatio: "16/9",
-									objectFit: "cover",
-									borderRadius: 4,
-								}}
-							/>
-
-							<h3
-								style={{
-									fontSize: 20,
-									fontWeight: 500,
-									letterSpacing: "-0.03em",
-									margin: 0,
-									color: "var(--gf-text)",
-									fontFamily: "var(--gf-font-ui)",
-									overflow: "hidden",
-									textOverflow: "ellipsis",
-									whiteSpace: "nowrap",
-								}}
-							>
-								{selectedGif.title}
-							</h3>
-
-							{/* Spec rows */}
-							<div
-								style={{
-									display: "flex",
-									flexDirection: "column",
-									fontSize: 12,
-									color: "var(--gf-muted)",
-									fontFamily: "var(--gf-font-ui)",
-								}}
-							>
-								{[
-									["Source", "GIPHY"],
-									["GIF id", selectedGif.id.slice(0, 14)],
-								].map(([k, v]) => (
+						{canUseCustomUploads && customUploads.isLoading && (
+							<div style={{ columnCount: 4, columnGap: 14 }}>
+								{PICKER_SKELETON_KEYS.map((key) => (
 									<div
-										key={k}
-										style={{
-											display: "flex",
-											justifyContent: "space-between",
-											padding: "9px 0",
-											borderBottom: "1px solid var(--gf-hl)",
-										}}
+										key={key}
+										style={{ breakInside: "avoid", marginBottom: 14 }}
 									>
-										<span>{k}</span>
-										<span
+										<div
 											style={{
-												color: "var(--gf-text)",
-												fontFamily: "var(--gf-font-mono)",
+												aspectRatio: "16/9",
+												borderRadius: 4,
+												background: "var(--gf-t2)",
 											}}
-										>
-											{v}
-										</span>
+										/>
 									</div>
 								))}
 							</div>
+						)}
 
-							{/* Caption */}
-							<div>
-								<div className="gf-eyebrow" style={{ marginBottom: 8 }}>
-									Caption (optional)
+						{canUseCustomUploads &&
+							!customUploads.isLoading &&
+							uploads.length > 0 && (
+								<div style={{ columnCount: 4, columnGap: 14 }}>
+									{uploads.map((u) => (
+										<div
+											key={u.id}
+											style={{ breakInside: "avoid", marginBottom: 14 }}
+										>
+											<GifTile
+												url={u.previewUrl ?? u.gifUrl}
+												title={u.title}
+												selected={
+													selectedImage?.source === "upload" &&
+													selectedImage.id === u.id
+												}
+												onClick={() =>
+													setSelectedImage(
+														selectedImage?.source === "upload" &&
+															selectedImage.id === u.id
+															? null
+															: { ...u, source: "upload" },
+													)
+												}
+											/>
+										</div>
+									))}
 								</div>
-								<input
-									className="gf-input"
-									placeholder="Add a message…"
-									value={caption}
-									maxLength={120}
-									style={{ fontSize: 14 }}
-									onChange={(e) => setCaption(e.target.value)}
-								/>
-							</div>
+							)}
 
-							<button
-								type="button"
-								className="gf-btn primary lg block"
-								style={{ marginTop: "auto" }}
-								disabled={submit.isPending}
-								onClick={() =>
-									submit.mutate({
-										streamerProfileId: streamer.id,
-										caption,
-										gif: {
-											...selectedGif,
-											previewUrl: selectedGif.previewUrl ?? undefined,
-										},
-									})
-								}
-							>
-								{submit.isPending
-									? "Sending…"
-									: `Send to ${streamer.twitchDisplayName}`}
-								<SendIcon size={14} />
-							</button>
-						</>
-					) : (
-						<p
+						{canUseCustomUploads &&
+							!customUploads.isLoading &&
+							uploads.length === 0 && (
+								<p
+									style={{
+										color: "var(--gf-muted)",
+										fontSize: 14,
+										fontFamily: "var(--gf-font-ui)",
+									}}
+								>
+									No approved custom uploads for this channel yet.
+								</p>
+							)}
+					</>
+				)}
+			</div>
+
+			{/* ── Floating dock (appears on selection) ── */}
+			{selectedImage && (
+				<div
+					style={{
+						position: "absolute",
+						left: 56,
+						right: 56,
+						bottom: 28,
+						background: "var(--gf-inv)",
+						color: "var(--gf-on-inv)",
+						borderRadius: 14,
+						padding: "12px 12px 12px 14px",
+						display: "flex",
+						alignItems: "center",
+						gap: 18,
+						boxShadow:
+							"0 18px 50px -20px rgba(0,0,0,0.45), 0 2px 6px rgba(0,0,0,0.18)",
+					}}
+				>
+					{/* Mini preview */}
+					<div
+						style={{
+							width: 56,
+							height: 56,
+							borderRadius: 8,
+							overflow: "hidden",
+							flex: "0 0 auto",
+						}}
+					>
+						<img
+							src={selectedImage.previewUrl ?? selectedImage.gifUrl}
+							alt={selectedImage.title}
+							style={{
+								width: "100%",
+								height: "100%",
+								objectFit: "cover",
+								display: "block",
+							}}
+						/>
+					</div>
+
+					{/* Title + meta */}
+					<div style={{ flex: "0 0 auto", minWidth: 120 }}>
+						<div
 							style={{
 								fontSize: 14,
-								color: "var(--gf-muted)",
+								fontWeight: 500,
+								letterSpacing: "-0.02em",
+								color: "var(--gf-on-inv)",
 								fontFamily: "var(--gf-font-ui)",
-								lineHeight: 1.55,
+								overflow: "hidden",
+								textOverflow: "ellipsis",
+								whiteSpace: "nowrap",
+								maxWidth: 200,
 							}}
 						>
-							Click a GIF in the results to select it, then send it to the
-							stream.
-						</p>
-					)}
-				</aside>
-			</div>
+							{selectedImage.title}
+						</div>
+						<div
+							style={{
+								fontSize: 11,
+								color: "rgba(255,255,255,0.5)",
+								fontFamily: "var(--gf-font-mono)",
+								marginTop: 2,
+								letterSpacing: "0.02em",
+							}}
+						>
+							{selectedImage.source === "giphy" ? "giphy" : "custom"} ·{" "}
+							{String(selectedImage.id).slice(0, 12)}
+						</div>
+					</div>
+
+					<span
+						style={{
+							width: 1,
+							height: 28,
+							background: "rgba(255,255,255,0.14)",
+							flex: "0 0 auto",
+						}}
+					/>
+
+					{/* Caption */}
+					<input
+						value={caption}
+						maxLength={120}
+						placeholder="Add a caption (optional)"
+						style={{
+							flex: 1,
+							minWidth: 0,
+							background: "transparent",
+							border: 0,
+							outline: "none",
+							fontSize: 15,
+							color: "var(--gf-on-inv)",
+							fontFamily: "var(--gf-font-ui)",
+							letterSpacing: "-0.01em",
+							padding: "8px 4px",
+						}}
+						onChange={(e) => setCaption(e.target.value)}
+					/>
+
+					{/* Send */}
+					<button
+						type="button"
+						className="gf-btn primary"
+						style={{
+							height: 44,
+							padding: "0 18px",
+							fontSize: 14,
+							flex: "0 0 auto",
+							borderRadius: 8,
+						}}
+						disabled={
+							isSending ||
+							(selectedImage.source === "giphy" && !canUseGiphy) ||
+							(selectedImage.source === "upload" && !canUseCustomUploads)
+						}
+						onClick={handleSend}
+					>
+						{isSending ? "Sending…" : "Send"}
+						<SendIcon size={14} />
+					</button>
+
+					{/* Dismiss */}
+					<button
+						type="button"
+						onClick={() => setSelectedImage(null)}
+						style={{
+							height: 44,
+							width: 44,
+							padding: 0,
+							display: "inline-flex",
+							alignItems: "center",
+							justifyContent: "center",
+							background: "transparent",
+							border: "none",
+							cursor: "pointer",
+							color: "rgba(255,255,255,0.5)",
+							flex: "0 0 auto",
+							borderRadius: 6,
+						}}
+					>
+						<XIcon size={15} />
+					</button>
+				</div>
+			)}
 		</div>
 	);
 }

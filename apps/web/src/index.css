@@ -71,6 +71,9 @@
   font-family: var(--gf-font-ui);
 }
 .gf-nav-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-size: 14px;
   color: var(--gf-muted);
   cursor: pointer;
@@ -254,6 +257,7 @@
   align-items: center;
   gap: 7px;
   padding: 9px 16px;
+  border: 0;
   font-size: 13px;
   font-weight: 500;
   font-family: var(--gf-font-ui);

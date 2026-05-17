@@ -8,7 +8,7 @@ export const router = t.router;
 
 export const publicProcedure = t.procedure;
 
-export const protectedProcedure = t.procedure.use(({ ctx, next }) => {
+export const sessionProcedure = t.procedure.use(({ ctx, next }) => {
 	if (!ctx.session) {
 		throw new TRPCError({
 			code: "UNAUTHORIZED",
@@ -21,5 +21,19 @@ export const protectedProcedure = t.procedure.use(({ ctx, next }) => {
 			...ctx,
 			session: ctx.session,
 		},
+	});
+});
+
+export const protectedProcedure = sessionProcedure.use(({ ctx, next }) => {
+	if (ctx.session.user.isAnonymous) {
+		throw new TRPCError({
+			code: "UNAUTHORIZED",
+			message: "Twitch sign-in required",
+			cause: "Anonymous session",
+		});
+	}
+
+	return next({
+		ctx,
 	});
 });
