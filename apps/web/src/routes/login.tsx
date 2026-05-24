@@ -41,10 +41,7 @@ function RoleRow({
 				cursor: "pointer",
 			}}
 		>
-			<Icon
-				size={20}
-				color={selected ? "var(--gf-text)" : "var(--gf-muted)"}
-			/>
+			<Icon size={20} color={selected ? "var(--gf-text)" : "var(--gf-muted)"} />
 			<div style={{ flex: 1 }}>
 				<div
 					style={{
@@ -137,7 +134,9 @@ function RouteComponent() {
 					>
 						Send a GIF.
 						<br />
-						<span style={{ color: "var(--gf-accent)" }}>Land it on stream.</span>
+						<span style={{ color: "var(--gf-accent)" }}>
+							Land it on stream.
+						</span>
 					</h1>
 					<p
 						style={{
