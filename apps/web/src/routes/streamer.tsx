@@ -516,7 +516,7 @@ function RouteComponent() {
 										background: "#000",
 										borderRadius: 4,
 									}}
-									src={overlayUrl}
+									src={`${overlayUrl}?preview=1`}
 									title="Overlay preview"
 								/>
 							</div>

@@ -32,7 +32,7 @@
 		"db:generate": "turbo run -F @my-better-t-app/db db:generate",
 		"db:migrate": "turbo run -F @my-better-t-app/db db:migrate",
 		"check": "biome check --write .",
-		"extension:zip": "turbo run -F extension build && cp apps/extension/panel.html apps/extension/dist/panel.html && rm -f extension.zip && zip -j extension.zip apps/extension/dist/panel.html apps/extension/dist/panel.js apps/extension/dist/panel.css"
+		"extension:zip": "bunx turbo run -F extension build && cp apps/extension/panel.html apps/extension/dist/panel.html && rm -f extension.zip && zip -j extension.zip apps/extension/dist/panel.html apps/extension/dist/panel.js apps/extension/dist/panel.css"
 	},
 	"dependencies": {
 		"@my-better-t-app/env": "workspace:*",

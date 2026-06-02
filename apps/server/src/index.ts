@@ -56,7 +56,11 @@ new Elysia()
 				return status(400, { error: "Invalid after cursor" });
 			}
 
-			const payload = await getOverlayGifs(params.overlayToken, after);
+			const preview = query.preview === "1";
+			const payload = await getOverlayGifs(params.overlayToken, {
+				after,
+				preview,
+			});
 			if (!payload) {
 				return status(404, { error: "Overlay not found" });
 			}
@@ -69,6 +73,7 @@ new Elysia()
 			}),
 			query: t.Object({
 				after: t.Optional(t.String()),
+				preview: t.Optional(t.String()),
 			}),
 		},
 	)

@@ -2,7 +2,8 @@ import { env } from "@my-better-t-app/env/web";
 import { anonymousClient } from "better-auth/client/plugins";
 import { createAuthClient } from "better-auth/react";
 
-const DEFAULT_APP_URL = "https://gifingie.huikaton.online";
+const DEFAULT_APP_URL =
+	import.meta.env.VITE_APP_URL ?? "https://gifingie.huikaton.online";
 
 function appBaseUrl() {
 	return (

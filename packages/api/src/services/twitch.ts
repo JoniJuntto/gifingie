@@ -248,12 +248,17 @@ function channelPointsRewardsUrl(broadcasterId: string) {
 	return url;
 }
 
+type ChannelPointsRewardSummary = {
+	id: string;
+	title: string;
+	cost: number;
+};
+
 export async function listChannelPointsRewards(input: {
 	broadcasterId: string;
 	accessToken: string;
 }) {
 	const url = channelPointsRewardsUrl(input.broadcasterId);
-	url.searchParams.set("only_manageable_rewards", "true");
 	url.searchParams.set("first", "50");
 
 	const response = await fetch(url, {
@@ -269,9 +274,20 @@ export async function listChannelPointsRewards(input: {
 	}
 
 	const body = (await response.json()) as {
-		data: { id: string; title: string }[];
+		data: { id: string; title: string; cost: number }[];
 	};
-	return body.data;
+	return body.data.map<ChannelPointsRewardSummary>((reward) => ({
+		id: reward.id,
+		title: reward.title,
+		cost: reward.cost,
+	}));
+}
+
+function channelPointsRewardOwnedByOtherAppError(title: string) {
+	return new TwitchChannelPointsError(
+		403,
+		`A channel points reward titled "${title}" already exists on Twitch but was created outside this app. Delete it in Twitch Creator Dashboard → Viewer Rewards, then save settings again.`,
+	);
 }
 
 async function updateChannelPointsReward(input: {
@@ -347,6 +363,57 @@ async function createChannelPointsReward(input: {
 	return rewardId;
 }
 
+async function updateOrAdoptChannelPointsReward(input: {
+	broadcasterId: string;
+	accessToken: string;
+	rewardId: string;
+	title: string;
+	cost: number;
+	existingReward?: ChannelPointsRewardSummary;
+}) {
+	try {
+		return await updateChannelPointsReward({
+			broadcasterId: input.broadcasterId,
+			accessToken: input.accessToken,
+			rewardId: input.rewardId,
+			title: input.title,
+			cost: input.cost,
+		});
+	} catch (error) {
+		if (
+			error instanceof TwitchChannelPointsError &&
+			error.httpStatus === 403 &&
+			input.existingReward?.cost === input.cost
+		) {
+			return input.rewardId;
+		}
+		if (error instanceof TwitchChannelPointsError && error.httpStatus === 403) {
+			throw channelPointsRewardOwnedByOtherAppError(input.title);
+		}
+		throw error;
+	}
+}
+
+function findExistingChannelPointsReward(input: {
+	rewards: ChannelPointsRewardSummary[];
+	title: string;
+	existingRewardId?: string | null;
+}): ChannelPointsRewardSummary | null {
+	const byTitle = input.rewards.find((reward) => reward.title === input.title);
+	if (byTitle) {
+		return byTitle;
+	}
+
+	if (input.existingRewardId) {
+		return (
+			input.rewards.find((reward) => reward.id === input.existingRewardId) ??
+			null
+		);
+	}
+
+	return null;
+}
+
 export async function upsertChannelPointsReward(input: {
 	broadcasterId: string;
 	accessToken: string;
@@ -358,22 +425,20 @@ export async function upsertChannelPointsReward(input: {
 		broadcasterId: input.broadcasterId,
 		accessToken: input.accessToken,
 	});
-	const rewardByTitle = rewards.find((reward) => reward.title === input.title);
-	const storedRewardStillExists =
-		input.existingRewardId != null &&
-		rewards.some((reward) => reward.id === input.existingRewardId);
+	const existingReward = findExistingChannelPointsReward({
+		rewards,
+		title: input.title,
+		existingRewardId: input.existingRewardId,
+	});
 
-	const rewardId = storedRewardStillExists
-		? input.existingRewardId
-		: (rewardByTitle?.id ?? null);
-
-	if (rewardId) {
-		return updateChannelPointsReward({
+	if (existingReward) {
+		return updateOrAdoptChannelPointsReward({
 			broadcasterId: input.broadcasterId,
 			accessToken: input.accessToken,
-			rewardId,
+			rewardId: existingReward.id,
 			title: input.title,
 			cost: input.cost,
+			existingReward,
 		});
 	}
 
@@ -408,7 +473,10 @@ export async function fulfillChannelPointsRedemption(input: {
 
 export async function getAppAccessToken() {
 	try {
-		return await auth.getAppAccessToken();
+		const token = await auth.getAppAccessToken();
+		if (token.accessToken) {
+			return token.accessToken;
+		}
 	} catch {
 		// Fall through to client-credentials fetch.
 	}

@@ -247,7 +247,6 @@ export const streamerRouter = router({
 					uploadPriceAmount,
 					soundPriceCurrency: input.soundPriceCurrency,
 					soundPriceAmount,
-					updatedAt: new Date(),
 				})
 				.where(eq(streamerProfiles.id, existing.id))
 				.returning();

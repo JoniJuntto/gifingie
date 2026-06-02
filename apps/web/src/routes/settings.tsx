@@ -53,15 +53,17 @@ const PRICE_CURRENCY_OPTIONS: { value: PriceCurrency; label: string }[] = [
 ];
 
 function moderationSettingsInput(
-	profile: {
-		moderateGiphySubmissions?: boolean;
-		allowCustomUploads?: boolean;
-		allowGifSubmissions?: boolean;
-		allowSoundSubmissions?: boolean;
-		giphyAccess?: ViewerAccessLevel;
-		uploadAccess?: ViewerAccessLevel;
-	} | null
-	| undefined,
+	profile:
+		| {
+				moderateGiphySubmissions?: boolean;
+				allowCustomUploads?: boolean;
+				allowGifSubmissions?: boolean;
+				allowSoundSubmissions?: boolean;
+				giphyAccess?: ViewerAccessLevel;
+				uploadAccess?: ViewerAccessLevel;
+		  }
+		| null
+		| undefined,
 	overrides: Partial<{
 		moderateGiphySubmissions: boolean;
 		allowCustomUploads: boolean;
@@ -407,7 +409,10 @@ function RouteComponent() {
 				await queryClient.invalidateQueries();
 				toast.success("Pricing settings saved");
 			},
-			onError: (e) => toast.error(e.message),
+			onError: (e) => {
+				console.error(e);
+				toast.error(e.message);
+			},
 		}),
 	);
 
@@ -471,10 +476,7 @@ function RouteComponent() {
 		authClient.signIn.social({
 			provider: "twitch",
 			callbackURL: `${window.location.origin}/settings`,
-			scopes: [
-				"user:read:moderated_channels",
-				TWITCH_SUBSCRIPTIONS_SCOPE,
-			],
+			scopes: ["user:read:moderated_channels", TWITCH_SUBSCRIPTIONS_SCOPE],
 		});
 	};
 
@@ -649,7 +651,7 @@ function RouteComponent() {
 													label: "Streamer",
 												},
 											] as const
-										).map(({ value, label}) => (
+										).map(({ value, label }) => (
 											<button
 												key={value}
 												type="button"
@@ -1161,8 +1163,7 @@ function RouteComponent() {
 										onChange={(event) =>
 											updateModerationSettings.mutate(
 												moderationSettingsInput(profile, {
-													giphyAccess: event.target
-														.value as ViewerAccessLevel,
+													giphyAccess: event.target.value as ViewerAccessLevel,
 												}),
 											)
 										}
@@ -1185,8 +1186,7 @@ function RouteComponent() {
 										onChange={(event) =>
 											updateModerationSettings.mutate(
 												moderationSettingsInput(profile, {
-													uploadAccess: event.target
-														.value as ViewerAccessLevel,
+													uploadAccess: event.target.value as ViewerAccessLevel,
 												}),
 											)
 										}
@@ -1217,7 +1217,9 @@ function RouteComponent() {
 									title="GIPHY price"
 									sub="Viewers pay on Twitch (channel points or bits), then send here. Leave free to skip payment."
 								>
-									<div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+									<div
+										style={{ display: "flex", gap: 10, alignItems: "center" }}
+									>
 										<select
 											className="gf-input boxed"
 											value={giphyPriceCurrency}
@@ -1256,7 +1258,9 @@ function RouteComponent() {
 									title="Custom upload price"
 									sub="Separate from GIPHY pricing. Requires custom uploads to be enabled."
 								>
-									<div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+									<div
+										style={{ display: "flex", gap: 10, alignItems: "center" }}
+									>
 										<select
 											className="gf-input boxed"
 											value={uploadPriceCurrency}
@@ -1300,7 +1304,9 @@ function RouteComponent() {
 									title="Sound price"
 									sub="Separate from GIF pricing. Requires sound submissions to be enabled."
 								>
-									<div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+									<div
+										style={{ display: "flex", gap: 10, alignItems: "center" }}
+									>
 										<select
 											className="gf-input boxed"
 											value={soundPriceCurrency}

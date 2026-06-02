@@ -18,10 +18,17 @@ export const queryClient = new QueryClient({
 	}),
 });
 
+function apiBaseUrl() {
+	console.log("env.VITE_SERVER_URL", env.VITE_SERVER_URL);
+	return (
+		env.VITE_SERVER_URL ?? "https://gifingie.huikaton.online".replace(/\/$/, "")
+	);
+}
+
 export const trpcClient = createTRPCClient<AppRouter>({
 	links: [
 		httpBatchLink({
-			url: `${env.VITE_SERVER_URL ?? "https://gifingie.huikaton.online"}/trpc`,
+			url: `${apiBaseUrl()}/trpc`,
 			fetch(url, options) {
 				return fetch(url, {
 					...options,

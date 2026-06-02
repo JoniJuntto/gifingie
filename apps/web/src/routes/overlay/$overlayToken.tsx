@@ -1,8 +1,11 @@
 import { env } from "@my-better-t-app/env/web";
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 export const Route = createFileRoute("/overlay/$overlayToken")({
+	validateSearch: (search: Record<string, unknown>) => ({
+		preview: search.preview === "1" || search.preview === 1,
+	}),
 	component: RouteComponent,
 });
 
@@ -76,10 +79,7 @@ function clampOverlayLayout(layout: OverlayLayout): OverlayLayout {
 	};
 }
 
-function soundMaxSeconds(
-	displaySeconds: number,
-	durationMs?: number | null,
-) {
+function soundMaxSeconds(displaySeconds: number, durationMs?: number | null) {
 	const fromSettings = Math.min(displaySeconds, MAX_SOUND_PLAYBACK_SECONDS);
 	if (durationMs && durationMs > 0) {
 		return Math.min(fromSettings, durationMs / 1000);
@@ -87,23 +87,42 @@ function soundMaxSeconds(
 	return fromSettings;
 }
 
+function buildPollQuery(lastSeenId: number | null, preview: boolean) {
+	const params = new URLSearchParams();
+	if (lastSeenId !== null) {
+		params.set("after", String(lastSeenId));
+	}
+	if (preview) {
+		params.set("preview", "1");
+	}
+	const qs = params.toString();
+	return qs ? `?${qs}` : "";
+}
+
 function RouteComponent() {
 	const { overlayToken } = Route.useParams();
+	const { preview: isPreview } = Route.useSearch();
 	const [queue, setQueue] = useState<OverlayItem[]>([]);
 	const [current, setCurrent] = useState<CurrentOverlayItem | null>(null);
+	const [pendingAckId, setPendingAckId] = useState<number | null>(null);
 	const [displaySeconds, setDisplaySeconds] = useState(DEFAULT_DISPLAY_SECONDS);
 	const [layout, setLayout] = useState<OverlayLayout>(DEFAULT_OVERLAY_LAYOUT);
 	const [elapsed, setElapsed] = useState(0);
 	const lastSeenId = useRef<number | null>(null);
 	const seenIds = useRef(new Set<number>());
 	const audioRef = useRef<HTMLAudioElement>(null);
-	const apiBase = useMemo(() => env.VITE_SERVER_URL ?? "https://gifingie.huikaton.online".replace(/\/$/, ""), []);
+	const apiBase = useMemo(
+		() =>
+			env.VITE_SERVER_URL ??
+			"https://gifingie.huikaton.online".replace(/\/$/, ""),
+		[],
+	);
 
 	useEffect(() => {
 		let cancelled = false;
 
 		async function poll() {
-			const params = lastSeenId.current ? `?after=${lastSeenId.current}` : "";
+			const params = buildPollQuery(lastSeenId.current, isPreview);
 			const response = await fetch(
 				`${apiBase}/api/overlay/${overlayToken}/gifs${params}`,
 			);
@@ -155,7 +174,7 @@ function RouteComponent() {
 			cancelled = true;
 			window.clearInterval(iv);
 		};
-	}, [apiBase, overlayToken]);
+	}, [apiBase, isPreview, overlayToken]);
 
 	useEffect(() => {
 		if (current || queue.length === 0) return;
@@ -173,18 +192,32 @@ function RouteComponent() {
 	}, [current, displaySeconds, queue]);
 
 	useEffect(() => {
-		if (!current) return;
+		if (pendingAckId === null || isPreview) return;
+
+		const submissionId = pendingAckId;
+		setPendingAckId(null);
 
 		fetch(`${apiBase}/api/overlay/${overlayToken}/ack`, {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({ submissionId: current.id }),
+			body: JSON.stringify({ submissionId }),
 		});
-	}, [apiBase, current, overlayToken]);
+	}, [apiBase, isPreview, overlayToken, pendingAckId]);
+
+	const finishCurrent = useCallback(
+		(submissionId: number) => {
+			if (!isPreview) {
+				setPendingAckId(submissionId);
+			}
+			setCurrent(null);
+		},
+		[isPreview],
+	);
 
 	useEffect(() => {
 		if (!current || current.isSound) return;
 
+		const submissionId = current.id;
 		const startMs = Date.now();
 		const tickMs = 100;
 		const iv = window.setInterval(() => {
@@ -192,16 +225,17 @@ function RouteComponent() {
 			setElapsed(e);
 			if (e >= current.displaySeconds) {
 				window.clearInterval(iv);
-				setCurrent(null);
+				finishCurrent(submissionId);
 			}
 		}, tickMs);
 
 		return () => window.clearInterval(iv);
-	}, [current]);
+	}, [current, finishCurrent]);
 
 	useEffect(() => {
 		if (!current?.isSound) return;
 
+		const submissionId = current.id;
 		const audio = audioRef.current;
 		if (!audio) return;
 
@@ -210,7 +244,7 @@ function RouteComponent() {
 		let playbackSeconds = current.displaySeconds;
 
 		const finish = () => {
-			if (!cancelled) setCurrent(null);
+			if (!cancelled) finishCurrent(submissionId);
 		};
 
 		const onLoadedMetadata = () => {
@@ -246,7 +280,7 @@ function RouteComponent() {
 			audio.removeEventListener("ended", onEnded);
 			audio.pause();
 		};
-	}, [current, displaySeconds]);
+	}, [current, displaySeconds, finishCurrent]);
 
 	const progress = current
 		? Math.min(1, elapsed / Math.max(current.displaySeconds, 0.001))

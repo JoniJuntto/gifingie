@@ -10,6 +10,7 @@ import {
 	DEFAULT_OVERLAY_GIF_WIDTH_PERCENT,
 	DEFAULT_OVERLAY_GIF_X_PERCENT,
 	DEFAULT_OVERLAY_GIF_Y_PERCENT,
+	MAX_OVERLAY_DISPLAY_SECONDS,
 	OVERLAY_DISPLAY_SECONDS,
 	OVERLAY_INITIAL_WINDOW_MINUTES,
 } from "./constants";
@@ -45,7 +46,12 @@ export function buildOverlayAllowedSourceFilters(profile: {
 	return allowedSourceFilters;
 }
 
-export async function getOverlayGifs(overlayToken: string, after?: number) {
+export async function getOverlayGifs(
+	overlayToken: string,
+	options?: { after?: number; preview?: boolean },
+) {
+	const after = options?.after;
+	const preview = options?.preview ?? false;
 	const [profile] = await db
 		.select()
 		.from(streamerProfiles)
@@ -82,9 +88,23 @@ export async function getOverlayGifs(overlayToken: string, after?: number) {
 		};
 	}
 
+	const gifDisplaySeconds = Math.min(
+		profile.gifDisplaySeconds ?? OVERLAY_DISPLAY_SECONDS,
+		MAX_OVERLAY_DISPLAY_SECONDS,
+	);
+	const recentDisplayedCutoff = new Date(
+		Date.now() - gifDisplaySeconds * 1000,
+	);
+	const displayFilter = preview
+		? or(
+				isNull(gifSubmissions.displayedAt),
+				gte(gifSubmissions.displayedAt, recentDisplayedCutoff),
+			)
+		: isNull(gifSubmissions.displayedAt);
+
 	const filters = [
 		eq(gifSubmissions.streamerProfileId, profile.id),
-		isNull(gifSubmissions.displayedAt),
+		displayFilter,
 		eq(gifSubmissions.moderationStatus, "approved"),
 		or(...allowedSourceFilters),
 	];
